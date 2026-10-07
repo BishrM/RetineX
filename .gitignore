@@ -1,0 +1,36 @@
+# environments
+.venv/
+venv/
+.env
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/
+*.egg-info/
+# data (Flickr8K is downloaded by the user, never committed)
+data/*
+!data/.gitkeep
+# generated artifacts
+models/*
+!models/.gitkeep
+artifacts/*
+!artifacts/.gitkeep
+*.h5
+*.keras
+*.ckpt
+*.npy
+*.npz
+*.pkl
+# generated audio
+*.mp3
+*.wav
+# logs / temp
+logs/
+*.log
+tmp/
+uploads/
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
