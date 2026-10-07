@@ -66,6 +66,12 @@ Fisher mask -> baseline training -> RetineX training -> BLEU evaluation -> infer
 - Use current `tf.keras` APIs. Paths relative to repo root / configurable, never hard-coded absolute.
 - Reference repo (MiteshPuthran/Image-Caption-Generator) is conceptual reference only; do not copy code blindly.
 
+## STAGE 1 DECISIONS
+
+- Dataset layer: `src/retinex/dataset.py`; commands `python -m retinex.dataset validate|split|verify`; split seed 42.
+- `data/flickr8k/splits/` (IDs + `split_meta.json` checksums) is the frozen split. Later stages use `load_split`, never `make_split`; never use `--force` without user approval.
+- Venv is `.venv/`; install with `pip install -e ".[dev]"`; run tests with `pytest`.
+
 ## TESTING RULES
 
 pytest. Each stage gets a small test that fails if its logic breaks (shapes, split disjointness, mask size 512,

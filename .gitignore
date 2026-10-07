@@ -11,6 +11,9 @@ __pycache__/
 # data (Flickr8K is downloaded by the user, never committed)
 data/*
 !data/.gitkeep
+!data/flickr8k/
+data/flickr8k/*
+!data/flickr8k/splits/
 # generated artifacts
 models/*
 !models/.gitkeep
