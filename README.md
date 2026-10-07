@@ -25,8 +25,8 @@ Planned: Python, TensorFlow/Keras, NumPy, Pandas, scikit-learn, NLTK, Pillow, Fl
 
 ## Dataset
 Flickr8K (images + 5 human captions each) is used for training and evaluating the captioner.
-Expected size is ~8,000 images / ~40,000 captions; **measured numbers are not recorded yet** because the dataset has
-not been placed on the development machine (see `HANDOFF.md`).
+Measured on the Kaggle copy used here: 8,091 images, 40,455 captions, exactly 5 per image. The frozen split uses
+8,000 of those images (6000/1000/1000); the other 91 are unused.
 
 
 ## Experimental Design
@@ -48,12 +48,28 @@ Only Stage 1 dependencies are listed; later stages will add theirs.
 
 
 ## Dataset Setup
-**Acquisition (manual).** Flickr8K must be obtained by you; it is not in this repository and must not be committed.
-The reference project points to the University of Illinois request form <https://forms.illinois.edu/sec/1713398>
-(link taken from that README; not verified by us). The download provides an images archive (`Flickr8k_Dataset`)
-and a text archive containing `Flickr8k.token.txt`.
+**Original dataset source.** Flickr8K comes from Hodosh, Young & Hockenmaier,
+[Framing Image Description as a Ranking Task (JAIR 2013)](https://jair.org/index.php/jair/article/view/10833).
+The University of Illinois distributes it through a request form, <https://forms.illinois.edu/sec/1713398> (form verified live;
+download link is emailed, non-commercial research/education use, link must not be redistributed). In our case the emailed link returned 404.
 
-**Place files** (override the root with `--data-dir` or the `RETINEX_DATA_DIR` environment variable):
+**Practical access source used by this project.** Kaggle dataset
+[`adityajn105/flickr8k`](https://www.kaggle.com/datasets/adityajn105/flickr8k) (uploader `adityajn105`, 1.04 GB, version 1).
+It is a third-party repackaging, **not** the official distribution. Provenance is consistent with the original corpus
+(8,091 images, 5 captions each, original filename pattern) but cannot be proven without the official files; see `HANDOFF.md`.
+Kaggle lists it as "CC0: Public Domain"; this is the uploader's assertion. The Illinois terms (non-commercial research and education)
+and the Flickr photographers' rights still apply in spirit, so use it for academic work only and do not redistribute it.
+
+**Download and normalize.** Kaggle layout is `Images/` + a CSV `captions.txt`; our code expects `Flickr8k.token.txt`, so a
+tested normalization step converts it (the download is left untouched, images are copied):
+```bash
+pip install kagglehub
+python -c "import kagglehub; print(kagglehub.dataset_download('adityajn105/flickr8k'))"   # prints the download path
+python -m retinex.dataset normalize --source <printed path>
+```
+If you obtain the original files from Illinois instead, put them in the layout below directly and skip `normalize`.
+
+**Resulting layout** (override the root with `--data-dir` or the `RETINEX_DATA_DIR` environment variable):
 ```
 data/flickr8k/
 ├── images/                  # all *.jpg files, flat
@@ -61,9 +77,9 @@ data/flickr8k/
 │   └── Flickr8k.token.txt   # lines: <image>.jpg#<0-4><TAB><caption>
 └── splits/                  # generated; see below
 ```
-Only the `Flickr8k.token.txt` caption format is supported.
+The parser only reads the `Flickr8k.token.txt` format. Official `Flickr_8k.*Images.txt` split files are not used; our own split is generated below.
 
-**Validate** (checks files exist, caption/image links, malformed or duplicate records, unreadable images; prints measured counts):
+**Validate** (on the Kaggle copy: 8,091 images, 40,455 captions, no anomalies; checks files exist, caption/image links, malformed or duplicate records, unreadable images; prints measured counts):
 ```bash
 python -m retinex.dataset validate
 ```

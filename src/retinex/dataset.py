@@ -1,12 +1,14 @@
 """Flickr8K dataset layer: caption parsing, validation, frozen image-level split.
 
-CLI: python -m retinex.dataset {validate,split,verify} [--data-dir DIR]
+CLI: python -m retinex.dataset {normalize,validate,split,verify} [--data-dir DIR]
 """
 import argparse
+import csv
 import hashlib
 import json
 import os
 import random
+import shutil
 import sys
 from collections import Counter
 from dataclasses import dataclass, field
@@ -47,6 +49,34 @@ def parse_captions(path):
                 seen.add((img, idx))
                 caps.setdefault(img, []).append(cap.strip())
     return caps, problems
+
+
+def normalize_kaggle(src, data_dir):
+    """Convert the Kaggle layout (Images/ + captions.txt CSV) into our canonical layout.
+
+    Writes captions/Flickr8k.token.txt and copies Images/*.jpg to images/. The source is left untouched.
+    Any malformed row raises; nothing is repaired silently. Caption index = order within the image.
+    """
+    src, data_dir = Path(src), Path(data_dir)
+    token = data_dir / "captions" / TOKEN_FILE
+    if token.exists():
+        raise FileExistsError(f"{token} already exists; refusing to overwrite")
+    with open(src / "captions.txt", encoding="utf8", newline="") as f:
+        rows = list(csv.reader(f))
+    if not rows or rows[0] != ["image", "caption"]:
+        raise ValueError(f"unexpected CSV header: {rows[:1]}")
+    lines, count = [], Counter()
+    for no, row in enumerate(rows[1:], 2):
+        if len(row) != 2 or not row[0].strip() or not row[1].strip() or "\t" in row[1] or "\n" in row[1]:
+            raise ValueError(f"line {no}: malformed row {row!r}")
+        lines.append(f"{row[0]}#{count[row[0]]}\t{row[1].strip()}")
+        count[row[0]] += 1
+    token.parent.mkdir(parents=True, exist_ok=True)
+    token.write_text("\n".join(lines) + "\n", encoding="utf8")
+    (data_dir / "images").mkdir(parents=True, exist_ok=True)
+    for img in sorted((src / "Images").glob("*.jpg")):
+        shutil.copy2(img, data_dir / "images" / img.name)
+    return len(lines), len(count)
 
 
 @dataclass
@@ -159,11 +189,23 @@ def verify_split(data_dir, sizes=SIZES):
 
 def main(argv=None):
     p = argparse.ArgumentParser(prog="retinex.dataset")
-    p.add_argument("command", choices=["validate", "split", "verify"])
+    p.add_argument("command", choices=["normalize", "validate", "split", "verify"])
     p.add_argument("--data-dir", type=Path, default=default_data_dir())
+    p.add_argument("--source", type=Path, help="normalize: downloaded Kaggle dataset directory")
     p.add_argument("--seed", type=int, default=SEED)
     p.add_argument("--force", action="store_true", help="split: overwrite frozen split")
     a = p.parse_args(argv)
+
+    if a.command == "normalize":
+        if not a.source:
+            p.error("normalize requires --source")
+        try:
+            n, m = normalize_kaggle(a.source, a.data_dir)
+        except (ValueError, FileExistsError, FileNotFoundError) as e:
+            print(f"normalize failed: {e}")
+            return 1
+        print(f"wrote {n} caption records for {m} images into {a.data_dir}")
+        return 0
 
     if a.command == "verify":
         errs = verify_split(a.data_dir)

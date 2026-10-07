@@ -1,0 +1,15 @@
+{
+  "seed": 42,
+  "population": 8091,
+  "unused": 91,
+  "sizes": {
+    "train": 6000,
+    "val": 1000,
+    "test": 1000
+  },
+  "sha256": {
+    "train": "c0e7c01a642c82c16ffdc42e934d9e61f77ffcfb171095cc3c76b7be8b936ddb",
+    "val": "40d386a4949c3cf0b225306c773aa0ac99340eff7eb1a939f2ccd038e6363e06",
+    "test": "6271db17191acce75fedcc06771d73c35ddb291a13244abc738d1f82c7ce6355"
+  }
+}

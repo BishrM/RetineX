@@ -112,3 +112,30 @@ def test_cli_validate_and_too_small_dataset(tmp_path):
     assert d.main(["validate", "--data-dir", root]) == 0
     assert d.main(["split", "--data-dir", root]) == 1   # 10 images < 8000 required
     assert d.main(["verify", "--data-dir", root]) == 1  # nothing generated
+
+
+def kaggle(root, rows, header="image,caption"):
+    (root / "Images").mkdir(parents=True)
+    for n in {r.split(",")[0].strip('"') for r in rows if r.startswith("a") or r.startswith("b")}:
+        Image.new("RGB", (4, 4)).save(root / "Images" / n)
+    (root / "captions.txt").write_text(header + "\n" + "\n".join(rows) + "\n")
+    return root
+
+
+def test_normalize_kaggle_roundtrip(tmp_path):
+    src = kaggle(tmp_path / "k", ['a.jpg,first one', 'a.jpg,"has, comma and # hash"', 'b.jpg,other'])
+    out = tmp_path / "out"
+    assert d.normalize_kaggle(src, out) == (3, 2)
+    caps, problems = d.parse_captions(out / "captions" / d.TOKEN_FILE)
+    assert problems == [] and caps == {"a.jpg": ["first one", "has, comma and # hash"], "b.jpg": ["other"]}
+    assert (out / "images" / "a.jpg").exists() and (src / "captions.txt").exists()
+    assert d.validate(out).ok
+    with pytest.raises(FileExistsError):
+        d.normalize_kaggle(src, out)
+
+
+@pytest.mark.parametrize("rows,header", [(["a.jpg,x,extra"], "image,caption"), (["a.jpg,"], "image,caption"),
+                                         (["a.jpg,fine"], "name,text")])
+def test_normalize_kaggle_rejects_malformed(tmp_path, rows, header):
+    with pytest.raises(ValueError):
+        d.normalize_kaggle(kaggle(tmp_path / "k", rows, header), tmp_path / "out")

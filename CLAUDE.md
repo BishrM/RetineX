@@ -70,6 +70,8 @@ Fisher mask -> baseline training -> RetineX training -> BLEU evaluation -> infer
 
 - Dataset layer: `src/retinex/dataset.py`; commands `python -m retinex.dataset validate|split|verify`; split seed 42.
 - `data/flickr8k/splits/` (IDs + `split_meta.json` checksums) is the frozen split. Later stages use `load_split`, never `make_split`; never use `--force` without user approval.
+- Data source: Kaggle `adityajn105/flickr8k` (third-party copy; Illinois original link returned 404). Normalize CSV with `python -m retinex.dataset normalize --source <dir>`. Always label it a third-party copy; never call it official. Full details in HANDOFF.md.
+- Frozen split (seed 42, 6000/1000/1000, 91 surplus images unused) is committed under `data/flickr8k/splits/`; verify with `python -m retinex.dataset verify`.
 - Venv is `.venv/`; install with `pip install -e ".[dev]"`; run tests with `pytest`.
 
 ## TESTING RULES
