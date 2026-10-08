@@ -91,6 +91,7 @@ baseline -> train RetineX -> BLEU -> inference -> Flask -> upload -> caption -> 
 - TF-IDF vectorizer, K-Means pseudo-classes and the Fisher mask are **fit on the training split only**; val/test are only transformed/masked.
 - Tokenizer/vocabulary built from training captions only.
 - Test split is touched only for final evaluation, never for tuning.
+- A test asserts the fit inputs contain no validation or test IDs.
 
 ## GIT RULES
 

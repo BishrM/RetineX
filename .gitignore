@@ -38,5 +38,5 @@ uploads/
 .idea/
 .DS_Store
 
-# vendored third-party skill: upstream has no license, do not commit
-.claude/skills/design-md-planner/
+# agent/editor tooling: local only, not part of the project
+.claude/
