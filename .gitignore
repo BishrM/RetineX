@@ -37,3 +37,6 @@ uploads/
 .vscode/
 .idea/
 .DS_Store
+
+# vendored third-party skill: upstream has no license, do not commit
+.claude/skills/design-md-planner/

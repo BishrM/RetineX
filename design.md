@@ -312,7 +312,7 @@ The only images in the product are real: the supplied brand assets, real photogr
 
 The supplied files are the source of truth and are never recreated, redrawn, recolored, or regenerated.
 
-- **Logo:** `RetineX logo` in the repository root, a PNG of 2039 by 771, an open eye mark plus the wordmark, with the tagline "Turning Vision Into Voice". It should be renamed to `app/static/brand/retinex-logo.png` when the frontend is set up, and an SVG version requested from whoever produced it, since a PNG wordmark will not stay crisp.
+- **Logo:** `retinex-logo.png` in the repository root, a PNG of 2039 by 771, an open eye mark plus the wordmark, with the tagline "Turning Vision Into Voice". It should be renamed to `app/static/brand/retinex-logo.png` when the frontend is set up, and an SVG version requested from whoever produced it, since a PNG wordmark will not stay crisp.
 - **Favicon:** `favicon.png` in the repository root, a PNG of 1774 by 887, the eye mark alone in blue. It is not square, so it is not yet a usable favicon; a square export with transparent padding is needed.
 - **Clear space** around the logo is at least the height of the eye mark on all sides. Minimum width is 160px. Do not stretch, rotate, add effects to, or place the logo on a busy background.
 
