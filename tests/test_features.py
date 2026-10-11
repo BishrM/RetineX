@@ -34,7 +34,7 @@ def fixture(tmp_path, dim=DIM, dtype=np.float32, ids=None, rows=None, meta_patch
 
 def check(tmp_path, **kw):
     out, data = fixture(tmp_path, **kw)
-    return f.validate_features(out, data, dim=kw.get("dim", DIM), sizes=SMALL)
+    return f._validate_features(out, data, dim=kw.get("dim", DIM), sizes=SMALL)
 
 
 def test_clean_artifacts_pass(tmp_path):
@@ -54,7 +54,7 @@ def test_wrong_dtype_detected(tmp_path):
 
 def test_wrong_dimension_detected(tmp_path):
     out, data = fixture(tmp_path, dim=DIM)
-    assert any("shape" in e for e in f.validate_features(out, data, dim=DIM + 1, sizes=SMALL))
+    assert any("shape" in e for e in f._validate_features(out, data, dim=DIM + 1, sizes=SMALL))
 
 
 def test_row_count_mismatch_detected(tmp_path):
@@ -82,7 +82,7 @@ def test_nan_and_inf_detected(tmp_path, bad):
     arr = np.load(out / f.MATRIX)
     arr[3, 2] = bad
     np.save(out / f.MATRIX, arr)
-    errs = f.validate_features(out, data, dim=DIM, sizes=SMALL)
+    errs = f._validate_features(out, data, dim=DIM, sizes=SMALL)
     assert any(("NaN" if np.isnan(bad) else "infinite") in e for e in errs)
 
 
@@ -90,7 +90,7 @@ def test_tampered_ids_file_detected(tmp_path):
     out, data = fixture(tmp_path)
     ids = (out / f.IDS).read_text().split()
     (out / f.IDS).write_text("\n".join(ids[::-1]) + "\n")  # same ids, different row mapping
-    errs = f.validate_features(out, data, dim=DIM, sizes=SMALL)
+    errs = f._validate_features(out, data, dim=DIM, sizes=SMALL)
     assert any("row order is no longer guaranteed" in e for e in errs)
 
 
@@ -99,7 +99,7 @@ def test_tampered_matrix_detected(tmp_path):
     arr = np.load(out / f.MATRIX)
     arr[0, 0] = 1.0
     np.save(out / f.MATRIX, arr)
-    assert any("sha256 mismatch" in e for e in f.validate_features(out, data, dim=DIM, sizes=SMALL))
+    assert any("sha256 mismatch" in e for e in f._validate_features(out, data, dim=DIM, sizes=SMALL))
 
 
 def test_incomplete_run_detected(tmp_path):
@@ -113,18 +113,41 @@ def test_caption_independence_recorded(tmp_path):
 def test_malformed_meta_detected(tmp_path):
     out, data = fixture(tmp_path)
     (out / f.META).write_text("{not json")
-    assert any("not valid JSON" in e for e in f.validate_features(out, data, dim=DIM, sizes=SMALL))
+    assert any("not valid JSON" in e for e in f._validate_features(out, data, dim=DIM, sizes=SMALL))
 
 
 def test_missing_artifacts_detected(tmp_path):
     out, data = fixture(tmp_path)
     (out / f.MATRIX).unlink()
-    assert f.validate_features(out, data, dim=DIM, sizes=SMALL) == [f"missing artifact: {f.MATRIX}"]
+    assert f._validate_features(out, data, dim=DIM, sizes=SMALL) == [f"missing artifact: {f.MATRIX}"]
+
+
+def test_production_validate_accepts_no_weakening_arguments(tmp_path):
+    """The frozen 6000/1000/1000 split and 4096-d width may not be supplied by a caller."""
+    import inspect
+
+    params = inspect.signature(f.validate_features).parameters
+    assert set(params) == {"out_dir", "data_dir"}
+    out, data = fixture(tmp_path)
+    for bad in ({"sizes": SMALL}, {"dim": DIM}, {"sizes": SMALL, "dim": DIM}):
+        with pytest.raises(TypeError):
+            f.validate_features(out, data, **bad)
+
+
+def test_production_validate_enforces_the_official_shape(tmp_path):
+    """Called on a tiny synthetic fixture, production validate must demand 8,000 x 4096."""
+    out, data = fixture(tmp_path)
+    errs = f.validate_features(out, data)
+    assert any("expected 8000" in e for e in errs)
+    assert any("expected (8000, 4096)" in e for e in errs)
+    assert f.FEATURE_DIM == 4096 and sum(d.SIZES.values()) == 8000
+    # the same artifacts are clean when checked against the fixture's own shape
+    assert f._validate_features(out, data, dim=DIM, sizes=SMALL) == []
 
 
 def test_wrong_split_size_detected(tmp_path):
     out, data = fixture(tmp_path)
-    errs = f.validate_features(out, data, dim=DIM, sizes={"train": 7, "val": 2, "test": 2})
+    errs = f._validate_features(out, data, dim=DIM, sizes={"train": 7, "val": 2, "test": 2})
     assert any("expected 7" in e for e in errs)
 
 
@@ -145,7 +168,7 @@ def test_extraction_needs_no_captions(tmp_path, monkeypatch):
     meta = f.extract(data, out, batch_size=4, resume=False, progress_cb=lambda *_: None)
     assert meta["uses_captions"] is False and meta["num_images"] == 10
     assert [s[0] for s in calls] == [4, 4, 2]
-    assert f.validate_features(out, data, dim=DIM, sizes=SMALL) == []
+    assert f._validate_features(out, data, dim=DIM, sizes=SMALL) == []
 
 
 def test_resume_skips_completed_rows(tmp_path, monkeypatch):

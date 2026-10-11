@@ -4,16 +4,23 @@
 **RetineX** — Deep Learning Based Image Caption Generation using Fisher Score Feature Optimization, LSTM and
 Neural Voice Narration for Real-Time Visual Accessibility. Academic major project.
 
-## Current status: Stages 1-2 complete
+## Current status: Stages 1-4 complete
 **Implemented and verified in this repo:** Stage 1 — the dataset layer (`src/retinex/dataset.py`), Flickr8K
 (third-party Kaggle copy) validation, and the frozen image-level 6000/1000/1000 split, committed and passing
 `verify`. Stage 2 — VGG16 fc2 feature extraction (`src/retinex/features.py`), **complete: all 8,000 rows of a
-(8000, 4096) float32 matrix**, passing `python -m retinex.features validate`. 41 pytest tests pass
-(20 dataset, 21 features), all on synthetic fixtures.
+(8000, 4096) float32 matrix**, passing `python -m retinex.features validate`. 179 pytest tests pass
+(20 dataset, 23 features, 67 pseudo-classes, 69 Fisher), all on synthetic fixtures.
 
-**Not implemented:** everything after Stage 2 — pseudo-classes, Fisher mask, both LSTM models, BLEU, inference,
-gTTS and the Flask app. No model has been trained, no caption generated and no BLEU score measured in this
-repo. The per-stage table below is authoritative; treat any stage not marked COMPLETED as nonexistent.
+Stage 3 — TF-IDF + K-Means semantic pseudo-classes (`src/retinex/pseudoclasses.py`), **complete: 6,000
+training images labelled into 20 clusters**, passing `python -m retinex.pseudoclasses validate`. Measured
+results are in the Stage 3 section below.
+
+Stage 4 — Fisher Score feature selection (`src/retinex/fisher.py`), **complete: 4096 -> 512 features
+selected from the 6,000 training rows, 8000x512 matrix materialised**, passing
+`python -m retinex.fisher validate`. Measured results are in the Stage 4 section below.
+
+**Not implemented:** everything after Stage 4 — both LSTM models, BLEU, inference, gTTS and the Flask app. No model has been trained, no caption generated and no BLEU score measured in this repo. The
+per-stage table below is authoritative; treat any stage not marked COMPLETED as nonexistent.
 
 | Stage | Status |
 |---|---|
@@ -21,15 +28,15 @@ repo. The per-stage table below is authoritative; treat any stage not marked COM
 | Dataset layer code + tests (`src/retinex/dataset.py`) | COMPLETED (20 synthetic tests pass) |
 | Real Flickr8K (Kaggle copy) validated, frozen split generated and verified | COMPLETED (source provenance NOT VERIFIED against the official files) |
 | VGG16 fc2 feature extraction | COMPLETED (8,000 / 8,000 rows; `validate` passes; see Stage 2 below) |
-| TF-IDF + K-Means pseudo-classes | NOT IMPLEMENTED |
-| Fisher Score mask (top 512) | NOT IMPLEMENTED |
+| TF-IDF + K-Means pseudo-classes | COMPLETED (6,000 labels, k=20, smallest cluster 67; `validate` passes; see Stage 3 below) |
+| Fisher Score mask (top 512) | COMPLETED (512 of 4096 selected; no boundary tie; `validate` passes; see Stage 4 below) |
 | Baseline LSTM (4096-d) | NOT IMPLEMENTED |
 | RetineX LSTM (512-d) | NOT IMPLEMENTED |
 | BLEU-1..4 evaluation | NOT IMPLEMENTED |
 | Inference | NOT IMPLEMENTED |
 | gTTS narration | NOT IMPLEMENTED |
 | Flask app | NOT IMPLEMENTED |
-| Tests for stages after Stage 1 | PARTIAL — `tests/test_features.py` only (21 tests, synthetic); Stages 3+ NOT IMPLEMENTED |
+| Tests for stages after Stage 1 | PARTIAL — `tests/test_features.py` (23), `tests/test_pseudoclasses.py` (67), `tests/test_fisher.py` (69), all synthetic; Stages 5+ NOT IMPLEMENTED |
 
 ## Origin and why a rebuild
 Evolved from https://github.com/MiteshPuthran/Image-Caption-Generator (itself an implementation of
@@ -167,7 +174,10 @@ stated**. Hardware per the metadata: macOS 26.6.2 arm64 (M2), devices `["/physic
 Metal backend was used. Versions: Python 3.12.0, TensorFlow 2.21.0, Keras 3.15.1, NumPy 2.5.3.
 
 **Reproducing or re-running**
-- `python -m retinex.features validate` re-checks the existing artifacts without recomputing them.
+- `python -m retinex.features validate` re-checks the existing artifacts without recomputing them. The
+  public `validate_features(out_dir, data_dir)` takes no `sizes` or `dim`: it reads the frozen
+  6000/1000/1000 split and 4096-d width from constants, so the real artifacts cannot be validated against a
+  weaker shape. The parameterised `_validate_features` exists only for the synthetic tests.
 - `python -m retinex.features extract` is resumable per batch: rows are written and `flush()`ed before the
   progress file advances, so an interruption costs at most one batch. On resume it accepts a checkpoint only
   when the recomputed id digest and the recorded shape both match.
@@ -194,3 +204,267 @@ Metal backend was used. Versions: Python 3.12.0, TensorFlow 2.21.0, Keras 3.15.1
 NaN/inf, tampered ids and matrix, incomplete status, malformed metadata, caption independence, resume skips
 completed rows, resume rejected on a changed split). Stage 2 added `numpy`, `tensorflow>=2.16` and `keras>=3`
 to `pyproject.toml`; before that only `pillow` was declared and a clean clone could not import this module.
+
+## Stage 3: TF-IDF + K-Means semantic pseudo-classes — COMPLETED
+**Status: COMPLETED.** `python -m retinex.pseudoclasses fit` ran on the real Flickr8K captions on
+2026-10-12 with the frozen defaults and no flags; `python -m retinex.pseudoclasses validate` passes:
+"train-only coverage, sorted ids, label range, cluster sizes, feature alignment and checksums verified".
+All numbers below are measured from that run.
+
+**Measured results (2026-10-12T00:48:24+0530)**
+- **6,000 training documents** from **30,000 training captions** (5 per image, `#n` order).
+- TF-IDF matrix **6000 x 4172**, 158,808 non-zeros; **vocabulary 4,172 terms** after `min_df=2`.
+- K-Means k=20 converged in **29 iterations**, **inertia 4897.982982**.
+- **Cluster sizes** (sum 6,000, smallest **67**, largest **908**, all >= the 10-image floor):
+  `{0: 406, 1: 908, 2: 229, 3: 316, 4: 256, 5: 472, 6: 237, 7: 101, 8: 179, 9: 255, 10: 556, 11: 230,
+  12: 114, 13: 312, 14: 67, 15: 307, 16: 344, 17: 117, 18: 463, 19: 131}`
+- **Cosine silhouette, full training set, no sampling:** k=5 **0.047472**, k=10 **0.061836**,
+  k=20 **0.063000**, k=30 **0.077254**, k=50 **0.086464**. The k=20 entry reuses the production labelling.
+- **Honest observation about the sweep:** the silhouette rises monotonically with K, so **k=50 scored
+  highest and k=20 did not**. K stayed at 20 because it was frozen in advance and the sweep is diagnostic
+  only (`k_selected_by_sweep: false`). The final report must state this rather than implying k=20 was
+  the best-scoring choice. All these silhouettes are low in absolute terms, which is normal for sparse
+  short-text TF-IDF and means the clusters are weakly separated, not that they are meaningless.
+- **Top terms per cluster** (from the centroids, in `pseudoclass_meta.json`) are semantically coherent:
+  c2 snow/snowboarder/skier, c4 player/soccer/ball/football, c7 pool/swimming, c9 bike/bicycle/riding,
+  c12 rock/climbing/cliff, c14 wave/surfer/surfboard/wetsuit, c17 beach/sand/ocean, c19 skateboard/ramp/trick,
+  with the remainder split by subject (man, woman, boy, girl, dogs, groups). Function words such as "in",
+  "the" and "on" still appear among top terms: a direct consequence of the approved decision to use no
+  stop-word list. `min_df=2` and IDF reduce their weight but do not remove them.
+- **Artifact checksums** recorded in the metadata and re-verified against the files after the run:
+  `train_pseudoclasses.csv` SHA-256 `913197e79701215e0c1871932e82322564a03a64d2e9ef1dcf30f960cb76ca92`,
+  `train_vocabulary.txt` SHA-256 `0f3a6010f5f5e4d80b5dad6018942a1c8cc3d517efc2281242cea05aad7eefd4`.
+  The training-id digest is `c0e7c01a642c82c16ffdc42e934d9e61f77ffcfb171095cc3c76b7be8b936ddb`, identical
+  to the frozen `train.txt` checksum, as expected since both hash the same sorted id list.
+- Environment: Python 3.12.0, scikit-learn 1.9.1, scipy 1.18.1, numpy 2.5.3.
+
+**Post-run integrity checks (all passed)**
+- 6,000 label rows, exactly the sorted training split; `train_ids_sha256` matches.
+- **No validation or test image carries a label**, and no `val_*`/`test_*` label file exists.
+- `feature_ids_sha256` and `split_meta_sha256` both still match the live files, so Stage 4 row alignment
+  holds; every labelled id resolves to a row of `vgg16_fc2.npy`.
+- `features validate` and `dataset verify` still pass; Stage 1/2 artifacts untouched.
+
+**Purpose:** produce one semantic pseudo-class label per *training* image, from captions, to act as the class
+variable for Stage 4's Fisher Score. Stage 3 never opens the 131 MB feature matrix; it reads
+`vgg16_fc2_ids.txt` only to checksum it for row alignment.
+
+**Frozen methodology** (approved 2026-10-12, recorded in CLAUDE.md under STAGE 3 DECISIONS)
+- One document per training image: that image's captions joined in `#n` order. 6,000 documents.
+- `TfidfVectorizer(lowercase=True, token_pattern=r"[a-z]{2,}", min_df=2, ngram_range=(1,1), norm="l2",
+  sublinear_tf=False)`, no stop-word list. `sublinear_tf=False` is deliberate: a word repeated across an
+  image's captions is a salience signal worth keeping linear.
+- `KMeans(n_clusters=20, random_state=42, n_init=10, algorithm="lloyd", max_iter=300)`. L2-normalised rows
+  make Euclidean K-Means equivalent to spherical/cosine clustering.
+- **K=20 frozen in advance and mechanically enforced.** `fit` raises `ValueError` on any other k before
+  touching the data, and the CLI refuses `--k` != 20 before any work. There is no override: the sweep is not
+  a function parameter at all (`test_fit_exposes_no_sweep_override` asserts that), so it cannot be used as a
+  back door to move K.
+- **Silhouette:** `metric="cosine"` on the L2-normalised training TF-IDF matrix, `sample_size=None` (every
+  training document, no sampling), `random_state` = the recorded seed, every candidate fitted on the training
+  documents only. The metadata records each candidate's score, the metric, the seed and the sampling setting;
+  a candidate whose silhouette is undefined gets `score: null` plus an `unavailable` reason, never a number.
+  The frozen k=20 entry reuses the production labelling rather than refitting.
+
+**Leakage position:** `train_documents` is the only document builder and receives the training ids alone;
+`fit` asserts the document id set equals the training split and intersects neither val nor test before
+fitting. No val/test labels are produced at all, and `validate` reports a stray `val_*`/`test_*` label file
+as a leakage risk. `test_fit_uses_training_captions_only` spies on the vectorizer and asserts the exact
+document list reaching `fit_transform`; `test_val_test_vocabulary_never_learned` asserts marker words that
+occur only in held-out captions are absent from the fitted vocabulary.
+
+**Artifacts** (`artifacts/pseudoclasses/`, git-ignored by the existing `artifacts/*` rule — verified with
+`git check-ignore`; no .gitignore change was needed). Written 2026-10-12: `train_pseudoclasses.csv` 169,341 B,
+`train_vocabulary.txt` 68,256 B, `pseudoclass_meta.json` 7,549 B.
+
+| File | Contents |
+| --- | --- |
+| `train_pseudoclasses.csv` | `image_id,pseudo_class`, 6,000 rows, sorted by image id |
+| `train_vocabulary.txt` | training vocabulary with IDF values, tab-separated |
+| `pseudoclass_meta.json` | full config, seed, vocab size, cluster sizes, inertia, silhouette, top-15 terms per cluster, `uses_val_test_captions: false`, `split_meta_sha256`, `feature_ids_sha256`, artifact checksums, `status: "complete"` |
+
+**Validation rules** (`python -m retinex.pseudoclasses validate`): artifacts present; metadata parses and
+says `status: complete`, `fitted_on: train`, `uses_val_test_captions: false`, `k_selected_by_sweep: false`,
+**`k` exactly 20** and `min_cluster_size_required` at least 10; **no cluster below 10 training images**,
+checked against the label file using the constant `MIN_CLUSTER_SIZE = 10`; the sweep block present with
+`candidates_expected == [5,10,20,30,50]`, exactly those candidate keys, `metric == "cosine"`,
+`sample_size is None`, `fitted_on == "train"`, a `random_state` matching the seed, and no candidate carrying
+a null score without a stated reason;
+label checksums unchanged; exactly the 6,000 training ids, sorted, no duplicates; no val/test id labelled;
+labels within `[0, k)`; no empty cluster; **no cluster below 10 images** (a near-singleton class makes the
+Fisher within-class variance unstable); recorded `cluster_sizes` match the label file; `vgg16_fc2_ids.txt`
+unchanged since fitting and every labelled id resolvable to a feature row.
+
+**Frozen validation API:** `validate_pseudoclasses(out_dir, data_dir, features_dir)` accepts no `sizes` and
+no `min_cluster_size`; it reads `SIZES` (6000/1000/1000) and `MIN_CLUSTER_SIZE` (10) from constants, so the
+real artifacts cannot be validated against a weaker rule, and passing either argument is a `TypeError`. The
+split-size-parameterised `_validate_pseudoclasses` is private and used only by the synthetic tests, which
+still cannot relax the cluster floor because that stayed a constant on both paths.
+
+**Edge cases handled:** an image with no captions, or none left after cleaning, raises naming the ids;
+captions containing `#` or commas tokenize correctly (tested); `fit` refuses to overwrite existing artifacts
+without `--force`.
+
+**Measured cost of the sweep** (synthetic 6000x8000 L2-normalised sparse matrix at the real shape, not the
+real captions): five K-Means fits totalling 1.3 s and five cosine silhouettes totalling 1.5 s, about 2.8 s in
+all, peak RSS 0.84 GB. sklearn computes the silhouette through `pairwise_distances_chunked` under a 1024 MiB
+working-memory budget, so the 6000x6000 distance matrix is never materialised in full. **No sampling is
+needed**, and none is used.
+
+**Risks and limitations (post-run)**
+- Cluster sizes are **uneven as expected**: 67 to 908 against a 300 average. Nothing fell below the
+  10-image floor, so Fisher within-class variance is computable for every class, but the largest cluster
+  holds 15% of the training set and the smallest 1.1%, which will weight the Fisher ratio unevenly.
+  This is a measured property of the data, not a defect to tune away.
+- Cross-machine bitwise determinism is **not** guaranteed: identical labels are asserted in-process for a
+  fixed seed, but threaded BLAS may differ across builds. The label-file SHA-256 and inertia are recorded so
+  any drift is detectable.
+- The whole `fit`, including the five-candidate sweep, completed in well under a minute on this CPU-only
+  machine; the exact wall time was not instrumented, so no runtime figure is recorded.
+- `scikit-learn` 1.9.1, `scipy` 1.18.1, `joblib` 1.6.0 and `threadpoolctl` 3.7.0 were installed for this
+  stage; scipy requires Python >= 3.12, consistent with the project floor.
+
+**Code** `src/retinex/pseudoclasses.py` (`train_documents`, `fit`, `read_labels`, `validate_pseudoclasses`,
+CLI `fit|validate`) and `tests/test_pseudoclasses.py` (67 tests: documents, alignment, five leakage tests,
+frozen-K enforcement in both `fit` and the CLI, absence of a sweep override, sweep metric/seed/sampling
+recording, undefined-silhouette handling, determinism, frozen-config recording, label range, the real
+10-image cluster floor, metadata drift and sweep tampering, malformed CSV/JSON, overwrite protection). The
+train-only guard in `fit` raises `ValueError` rather than asserting, so `python -O` cannot strip the check
+that enforces the methodology.
+
+**Test fixture note:** the synthetic fixture uses **240** training images over 20 purely alphabetic themes, so
+the frozen k=20 produces 12 images per cluster and legitimately clears the 10-image floor. The words are
+alphabetic because `token_pattern=r"[a-z]{2,}"` strips digits — numbered fixture words like `theme1`/`theme2`
+collapse to `theme`, leaving identical, mutually orthogonal documents that make K-Means degenerate. Neither K
+nor the cluster floor is relaxed for the tests: production refuses any k but 20, and the floor has no
+parameter. An undersized cluster is tested by rewriting the label file and validating through the normal path.
+
+## Stage 4: Fisher Score feature selection — COMPLETED
+**Status: COMPLETED.** `python -m retinex.fisher select` ran on the real feature matrix on 2026-10-12 with
+the frozen defaults and no flags; `python -m retinex.fisher validate` passes: "formula metadata,
+independent top-512 re-derivation, ascending column mapping, source-column equality, training join and
+checksums verified". All numbers below are measured from that run.
+
+**Measured results (2026-10-12T01:31:14+0530)**
+- Joined **6,000 training ids** to feature rows **by image id**; 20 pseudo-classes, counts 67-908.
+- Scoring and selection took **0.2 s** at `chunk_rows=500` (1.7 s total CLI wall time including imports
+  and the upstream validation gate). Two passes over the 6,000 training rows in float64.
+- **Zero-denominator counts: 13 with zero numerator (constant features), 0 with signal.** The 13 match the
+  read-only variance diagnostic exactly; they are the all-zero fc2 columns.
+- **Infinite scores: 0.** The invariant `n_infinite_score == n_zero_denominator_with_signal` holds (0 == 0),
+  so no overflow occurred and no feature was perfectly separable.
+- **Zero scores: 13** — identical to the constant-feature count, i.e. no feature had within-class spread
+  yet identical class means.
+- **Score distribution** (all 4,096 finite): min 0.0, p25 0.0320, median 0.0542, p75 0.0925, p90 0.1466,
+  p99 0.3297, max **1.6783**; mean 0.0766.
+- **Boundary: no tie.** Cut score **0.13298203700205952**, `tied_at_cut_total: 1`, included 1, excluded 0.
+  Selected scores span 0.132982-1.678307; the highest unselected score is 0.132824, strictly below the cut.
+- **Selected indices** span original columns 2-4095, strictly ascending, int32.
+- **Output:** `vgg16_fc2_fisher512.npy`, shape **(8000, 512)**, dtype **float32**, all finite,
+  16,384,128 bytes; row order identical to `vgg16_fc2_ids.txt`.
+
+**Artifacts** (`artifacts/fisher/`, git-ignored by the existing `artifacts/*` rule)
+
+| File | Bytes | SHA-256 |
+| --- | --- | --- |
+| `fisher_scores.npy` | 32,896 | `6d9da06107ab4c4a8ff7af79ae1ebce156471eb481e83be6f63519ba7cafb78b` |
+| `fisher_top512_indices.npy` | 2,176 | `5de508262443f0cf35dec1a5ee1326bce05f84413db296a85d72bb21ae21e749` |
+| `vgg16_fc2_fisher512.npy` | 16,384,128 | `2ff02dc83008b6b999453c346074de851b98bf9ef778de3a1846f469e9c27468` |
+| `fisher_meta.json` | 3,584 | (records the three above) |
+
+**Provenance digests recorded in the metadata** (all re-verified against the live files after the run):
+source matrix `4f6a5aa0...e47ec26`, feature ids `622693cb...7b55eb7`, pseudo-class labels
+`913197e7...cb76ca92`, train ids `c0e7c01a...b936ddb`, split meta `efaa4042...586c740`.
+
+**Baseline preserved:** `vgg16_fc2.npy` SHA-256 is `4f6a5aa0e43eba43ac9db8b06165568a53bd9d5781e91e6d457bfb169e47ec26`
+before and after the run, matching both the Stage 2 metadata and the Stage 4 provenance record. The source
+was opened `mmap_mode="r"` only.
+
+**Independent post-run verification (read-only, written separately from `validate_fisher`)**
+- The top-512 re-derived with a plain Python sort on `(-score, index)` **matches the saved indices exactly**.
+- Minimum selected score 0.132982037 > maximum unselected 0.132824037, so the cut is unambiguous.
+- **All 4,096,000 output values** compared against the source gather: **0 mismatches**.
+- Scores recomputed from scratch with a different chunk size (1000 vs 500) differ by at most **1.06e-15**
+  and give the **identical ranking** — the chunk-order caveat is real but far below any effect on selection.
+- 6,000 of 8,000 rows were read for fitting; the 2,000 held-out rows contributed nothing to the scores.
+
+**Frozen formula** (approved 2026-10-12, recorded in CLAUDE.md under STAGE 4 DECISIONS), all means over
+the 6,000 training rows only:
+
+    F_j = SS_between,j / SS_within,j
+    SS_between,j = sum_c  n_c (mu_cj - mu_j)^2
+    SS_within,j  = sum_c  sum_{i in c} (x_ij - mu_cj)^2
+
+`SS_within` is the **pooled within-class sum of squared deviations**, which equals the count-weighted
+`sum_c n_c sigma^2_cj` exactly because the variance convention is **population, ddof = 0**. Verified
+numerically in `test_pooled_ssd_equals_count_weighted_variance_form`, and
+`test_variance_convention_is_population_not_sample` asserts a `ddof=1` denominator gives different scores.
+
+**Numerics:** two-pass float64 (class means, then squared deviations), chosen over
+`sum(x^2) - sum(x)^2/n` because that shortcut subtracts large near-equal numbers; on a synthetic check it
+drifted ~15x further from the reference. A sum of squared deviations cannot be negative, so **no clamping**
+is applied and a negative value raises as a bug. No epsilon, no standardisation (the ratio is
+scale-invariant). Zero denominators branch to `+inf` (separable) or `0.0` (constant); no `0/0` is executed,
+so no score can be NaN, and a non-finite input raises naming the offending rows.
+
+**Join by image id, never row position:** `training_join` resolves every row index through
+`vgg16_fc2_ids.txt` and requires the labelled ids to be a **one-to-one cover of the frozen training split**,
+raising on a labelled val/test image, a missing label, an unknown id, a duplicate feature id, or two ids
+resolving to the same row. The real training rows are **non-contiguous** (indices 0-7998), which the fixture
+mirrors by writing the feature ids in a scrambled order.
+
+**Selection:** stable argsort on the negated scores gives descending score with ties broken by ascending
+original index; the chosen indices are then sorted ascending, and that array is the column mapping
+(output column `i` is source column `idx[i]`). The cut score, whether the cut falls inside a tie, and the
+included/excluded tied counts are all recorded.
+
+**Planned artifacts** (`artifacts/fisher/`, git-ignored by the existing `artifacts/*` rule)
+
+| File | Contents |
+| --- | --- |
+| `fisher_scores.npy` | float64 (4096,) — all scores, `inf` and `0.0` included |
+| `fisher_top512_indices.npy` | int32 (512,), strictly ascending |
+| `vgg16_fc2_fisher512.npy` | float32 (8000, 512) ≈ 16.4 MB; rows follow `vgg16_fc2_ids.txt` unchanged |
+| `fisher_meta.json` | formula, variance convention, denominator form, algorithm, class counts, boundary block, edge-case counts, finite score statistics, `chunk_rows`, provenance digests (source matrix, feature ids, label file, both upstream metas, split meta, train ids), output checksums, `status: "complete"` |
+
+**Validation rules** (`python -m retinex.fisher validate`): artifacts present; metadata parses and records
+`status: complete`, `fitted_on: train`, `uses_val_test_data: false`, `uses_val_test_labels: false`,
+`standardized: false`, a null epsilon, the exact variance convention, denominator form, selection rule and
+column order, `n_selected` 512 and `n_features_in` 4096; checksums unchanged; scores shape (4096,) with no
+NaN and no negatives; indices shape (512,) int32, in range, **strictly ascending**; an **independent
+re-derivation** of the top-512 from the saved scores matching the saved indices; the recorded boundary block
+matching that re-derivation; the argsort-independent property that **no unselected feature scores strictly
+higher than a selected one**; the recorded zero/infinite counts matching the saved scores; the reduced
+matrix (8000, 512) float32 and finite, with **every column compared against its source column**; the source
+matrix byte-identical to the recorded digest; and the training join still holding.
+
+**Expected counts are NOT hardcoded.** Validation checks the recorded counts only against the saved scores
+for internal consistency. The pre-run diagnostic predicted 13 constant columns and the run measured 13;
+that agreement is reported, not asserted anywhere in code.
+
+**Known limitations**
+- Bitwise reproducibility depends on `chunk_rows`, the numpy build and BLAS, because float64 summation
+  order changes with chunking. `chunk_rows` is recorded in the metadata and a determinism note with it.
+- **Overflow is distinguished from genuine separability.** `_ratio` reserves `+inf` for
+  `SS_within == 0`; a non-finite ratio from a positive denominator raises `FloatingPointError` naming the
+  feature and both scatter terms, so it can never inflate `n_zero_denominator_with_signal`. `validate`
+  enforces the invariant `n_infinite_score == n_zero_denominator_with_signal` and checks the recorded
+  `overflow_policy`. The branch is defensive, not expected: with a float32 source and 8,000 rows the worst
+  finite ratio is bounded by `(8000 * float32_max^2) / (2 * (float32_subnormal/2)^2)` ~ 9.4e170, far below
+  float64's 1.8e308, so **overflow is mathematically unreachable here** — asserted by
+  `test_overflow_is_unreachable_from_a_float32_source`. It is tested directly against `_ratio` with
+  hand-built scatter vectors rather than through a contrived matrix, so nothing platform-dependent is
+  assumed.
+- `n_zero_score` and `n_zero_denominator_zero_numerator` are different quantities: a feature with
+  within-class spread but identical class means also scores 0.0 while having a positive denominator.
+- **No performance claim.** Whether 512 Fisher features beat the 4096-d baseline is answerable only by the
+  two LSTM BLEU evaluations in Stages 6-7. A negative result will be reported as such.
+
+**Code** `src/retinex/fisher.py` (`training_join`, `fisher_scores`, `select_top`, `apply_selection`,
+`select`/`_select`, `validate_fisher`/`_validate_fisher`, CLI `select|validate`) and
+`tests/test_fisher.py` (69 tests: formula vs an independent reference, the two denominator forms,
+ddof sensitivity, separating features, constant features, `+inf` handling, non-finite input, ill-conditioned
+columns, tie-breaking including multiple infinities and a cut through an infinite tie, id-based join and its
+five failure modes, held-out rows provably not influencing scores, output shape/dtype/mapping, source
+immutability, provenance digests, overwrite protection, upstream-validation gate, frozen public API, CLI
+top-k refusal, nineteen validation-failure cases, and six focused tests of the ratio/overflow policy).

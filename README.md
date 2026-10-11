@@ -102,7 +102,7 @@ can reach a feature.
 
 ```bash
 python -m retinex.features extract      # batched, resumable, validates when finished
-python -m retinex.features validate     # re-check existing artifacts
+python -m retinex.features validate     # re-check existing artifacts against the frozen 8,000 x 4096 shape
 ```
 
 Writes to `artifacts/features/` (git-ignored, about 131 MB):
@@ -115,6 +115,80 @@ Writes to `artifacts/features/` (git-ignored, about 131 MB):
 
 Row order is the sorted union of the frozen split, so it is deterministic across machines. Interrupting the
 run is safe: progress is checkpointed per batch and re-running resumes from the last completed row.
+
+## Semantic Pseudo-Classes (Stage 3)
+Groups the 6,000 **training** images into 20 semantic pseudo-classes from their captions, to serve as the
+class variable for Fisher Score feature selection. TF-IDF and K-Means are fitted on training captions only;
+no labels are produced for validation or test images.
+
+```bash
+python -m retinex.pseudoclasses fit         # fits on training captions, then validates
+python -m retinex.pseudoclasses validate    # re-check existing artifacts against the frozen split
+```
+
+Frozen configuration (see `CLAUDE.md`, STAGE 3 DECISIONS): one document per image from its 5 captions in
+`#n` order; TF-IDF `token_pattern=r"[a-z]{2,}"`, `min_df=2`, unigrams, L2 norm, no stop list; K-Means
+`k=20, random_state=42, n_init=10, algorithm="lloyd"`. **K=20 is frozen in advance and enforced** — `fit`
+and the CLI both refuse any other k, with no override. The cosine silhouette sweep over K in
+{5,10,20,30,50} is recorded for transparency and cannot select K.
+
+Writes to `artifacts/pseudoclasses/` (git-ignored):
+
+| File | Contents |
+| --- | --- |
+| `train_pseudoclasses.csv` | `image_id,pseudo_class` for the 6,000 training images, sorted by id |
+| `train_vocabulary.txt` | training vocabulary with IDF values |
+| `pseudoclass_meta.json` | config, seed, vocab size, cluster sizes, inertia, silhouette sweep (metric, seed, sampling, per-candidate score or reason), top terms per cluster, checksums |
+
+`validate` fails if a cluster holds fewer than 10 images, or if the labels do not cover the official 6,000
+training images. Both are frozen constants, not arguments — the public validators take no `sizes`,
+`dim` or `min_cluster_size`, so validation of the real experiment cannot be weakened by a caller. It also
+fails if any validation/test image carries a label, or
+if the feature id list has changed since fitting. An image left with no tokens after cleaning is an error
+naming the image id, never a silent all-zero row.
+
+## Fisher Score Feature Selection (Stage 4)
+Ranks the 4096 VGG16 `fc2` features by Fisher Score computed from the **6,000 training rows and their
+training-only pseudo-class labels**, keeps the top 512, and materialises an 8000 x 512 matrix by applying
+those fixed column indices to all rows. Applying training-derived indices to validation/test rows is a
+transform, not a fit.
+
+```bash
+python -m retinex.fisher select      # scores, selects, materialises, then validates
+python -m retinex.fisher validate    # re-check existing artifacts against the frozen 8000 x 512 shape
+```
+
+Frozen formula (see `CLAUDE.md`, STAGE 4 DECISIONS), means over training rows only:
+
+```
+F_j = sum_c n_c (mu_cj - mu_j)^2  /  sum_c sum_{i in c} (x_ij - mu_cj)^2
+```
+
+Population variance (`ddof=0`), which makes the denominator exactly the count-weighted
+`sum_c n_c sigma^2_cj`; two-pass float64; no standardisation; **no epsilon**. Zero denominators branch to
+`+inf` (separable) or `0.0` (constant feature), both counted in the metadata. `+inf` is reserved for a
+genuinely zero denominator: an overflowing ratio from a positive denominator raises instead, and `validate`
+enforces `n_infinite_score == n_zero_denominator_with_signal`. Top-512 is frozen — `select` and the CLI
+refuse any other value.
+
+Writes to `artifacts/fisher/` (git-ignored):
+
+| File | Contents |
+| --- | --- |
+| `fisher_scores.npy` | float64, 4096 scores including the `inf`/`0.0` cases |
+| `fisher_top512_indices.npy` | int32, 512 original indices, **ascending** |
+| `vgg16_fc2_fisher512.npy` | float32, (8000, 512); row order matches `vgg16_fc2_ids.txt` |
+| `fisher_meta.json` | formula, variance convention, class counts, boundary ties, edge-case counts, provenance digests, checksums |
+
+`validate` independently re-derives the top-512 from the saved scores, checks the indices are ascending and
+that no unselected feature outscores a selected one, compares every output column against its source column,
+and verifies the original 4096-d matrix is unchanged.
+
+Measured on the real features (2026-10-12): 512 of 4096 selected from the 6,000 training rows in 0.2 s;
+scores min 0.0, median 0.0542, max 1.6783; 13 constant features scored 0.0; no infinite scores; no tie at
+the cut (0.132982, highest unselected 0.132824); output (8000, 512) float32. See `HANDOFF.md` for the full
+record. **Whether these 512 features beat the 4096-d baseline is unknown until the two LSTM BLEU
+evaluations run.**
 
 ## Training
 NOT IMPLEMENTED YET

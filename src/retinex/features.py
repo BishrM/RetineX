@@ -167,8 +167,18 @@ def extract(data_dir, out_dir, batch_size=BATCH_SIZE, resume=True, progress_cb=_
     return meta
 
 
-def validate_features(out_dir, data_dir, dim=FEATURE_DIM, sizes=SIZES):
-    """Return a list of problems with the generated artifacts. Empty list means all checks passed."""
+def validate_features(out_dir, data_dir):
+    """Validate the Stage 2 artifacts against the frozen experiment. Empty list means all checks passed.
+
+    The split sizes (6000/1000/1000) and the feature width (4096) are not parameters: they are the
+    frozen methodology, so no caller can validate the real artifacts against a weaker shape. Tests
+    that need a tiny synthetic fixture call `_validate_features` directly, which cannot affect this path.
+    """
+    return _validate_features(out_dir, data_dir, dim=FEATURE_DIM, sizes=SIZES)
+
+
+def _validate_features(out_dir, data_dir, dim, sizes):
+    """Shape-parameterised implementation. Private: production goes through `validate_features`."""
     out_dir, data_dir = Path(out_dir), Path(data_dir)
     errs = []
     for name in (MATRIX, IDS, META):
