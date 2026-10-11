@@ -4,10 +4,12 @@ version = "0.0.0"
 # 3.12 is the floor the recorded stack needs: numpy 2.5.3 requires >=3.12, keras 3.15.1 requires >=3.11.
 requires-python = ">=3.12"
 # numpy is imported directly by retinex.features; tensorflow supplies keras 3 (and pulls numpy itself).
-dependencies = ["pillow", "numpy", "tensorflow>=2.16", "keras>=3", "scikit-learn"]
+dependencies = ["pillow", "numpy", "tensorflow>=2.16", "keras>=3", "scikit-learn", "flask"]
+# pyyaml is dev-only: it parses design.md frontmatter in scripts/build_tokens.py and in the
+# token-parity test. Nothing at runtime reads YAML.
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "pyyaml"]
 
 [build-system]
 requires = ["setuptools>=61"]

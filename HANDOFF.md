@@ -4,12 +4,12 @@
 **RetineX** — Deep Learning Based Image Caption Generation using Fisher Score Feature Optimization, LSTM and
 Neural Voice Narration for Real-Time Visual Accessibility. Academic major project.
 
-## Current status: Stages 1-4 complete
+## Current status: Stages 1-4 complete; web UI serving the implemented pipeline
 **Implemented and verified in this repo:** Stage 1 — the dataset layer (`src/retinex/dataset.py`), Flickr8K
 (third-party Kaggle copy) validation, and the frozen image-level 6000/1000/1000 split, committed and passing
 `verify`. Stage 2 — VGG16 fc2 feature extraction (`src/retinex/features.py`), **complete: all 8,000 rows of a
-(8000, 4096) float32 matrix**, passing `python -m retinex.features validate`. 179 pytest tests pass
-(20 dataset, 23 features, 67 pseudo-classes, 69 Fisher), all on synthetic fixtures.
+(8000, 4096) float32 matrix**, passing `python -m retinex.features validate`. 241 pytest tests pass
+(20 dataset, 23 features, 67 pseudo-classes, 69 Fisher, 62 app), all on synthetic fixtures.
 
 Stage 3 — TF-IDF + K-Means semantic pseudo-classes (`src/retinex/pseudoclasses.py`), **complete: 6,000
 training images labelled into 20 clusters**, passing `python -m retinex.pseudoclasses validate`. Measured
@@ -19,7 +19,10 @@ Stage 4 — Fisher Score feature selection (`src/retinex/fisher.py`), **complete
 selected from the 6,000 training rows, 8000x512 matrix materialised**, passing
 `python -m retinex.fisher validate`. Measured results are in the Stage 4 section below.
 
-**Not implemented:** everything after Stage 4 — both LSTM models, BLEU, inference, gTTS and the Flask app. No model has been trained, no caption generated and no BLEU score measured in this repo. The
+Web UI — a Flask application with a Workspace and a Home page (`app/`), serving the implemented
+pipeline only. See the UI section below for measured timings.
+
+**Not implemented:** both LSTM models, BLEU evaluation, caption inference and gTTS narration. No model has been trained, no caption generated and no BLEU score measured in this repo. The
 per-stage table below is authoritative; treat any stage not marked COMPLETED as nonexistent.
 
 | Stage | Status |
@@ -33,9 +36,9 @@ per-stage table below is authoritative; treat any stage not marked COMPLETED as 
 | Baseline LSTM (4096-d) | NOT IMPLEMENTED |
 | RetineX LSTM (512-d) | NOT IMPLEMENTED |
 | BLEU-1..4 evaluation | NOT IMPLEMENTED |
-| Inference | NOT IMPLEMENTED |
-| gTTS narration | NOT IMPLEMENTED |
-| Flask app | NOT IMPLEMENTED |
+| Caption inference | NOT IMPLEMENTED (single-image *feature* extraction works in the Workspace) |
+| gTTS narration | NOT IMPLEMENTED (UI shows disabled controls and an explanation) |
+| Flask app (Workspace + Home) | COMPLETED for the implemented stages (62 tests; no caption or narration, by design) |
 | Tests for stages after Stage 1 | PARTIAL — `tests/test_features.py` (23), `tests/test_pseudoclasses.py` (67), `tests/test_fisher.py` (69), all synthetic; Stages 5+ NOT IMPLEMENTED |
 
 ## Origin and why a rebuild
@@ -468,3 +471,100 @@ columns, tie-breaking including multiple infinities and a cut through an infinit
 five failure modes, held-out rows provably not influencing scores, output shape/dtype/mapping, source
 immutability, provenance digests, overwrite protection, upstream-validation gate, frozen public API, CLI
 top-k refusal, nineteen validation-failure cases, and six focused tests of the ratio/overflow policy).
+
+## Web UI: Workspace and Home — COMPLETED for the implemented stages
+**Status: COMPLETED** for what exists. Flask + Jinja2 + hand-written CSS + vanilla JavaScript. No npm,
+no React, no build step. Run it with:
+
+```bash
+python -c "from app import create_app; create_app().run(port=5055)"
+```
+Home at `/`, Workspace at `/workspace`, plus `GET /api/pipeline` and `POST /api/analyze`.
+
+**What the UI genuinely does**
+- Accepts one uploaded image, validates it, and extracts a real 4096-d VGG16 fc2 vector by calling
+  **the same functions Stage 2 used** (`features._build_model` and `features._load_batch`), so the
+  preprocessing cannot drift from the committed artifacts. `test_single_image_path_reuses_the_stage_2_loader`
+  asserts the tensor is `np.array_equal` to what `_load_batch` produces for the same file.
+- Applies the **saved** `fisher_top512_indices.npy` to that vector. Fisher Score is never refitted and
+  the app never writes to `artifacts/`; a test snapshots every Stage 2/3/4 checksum around an analyze
+  call and asserts equality.
+- Reports measured per-request statistics: dimensions, mean, max, L2 norm, zero fraction, the eight
+  strongest selected dimensions with their original 4096-d index, and the request's own timings.
+- Derives the nine-stage pipeline display by **running the four real validators on every page load**,
+  so a missing or tampered artifact is reported instead of a green badge. Two tests prove it: empty
+  directories yield four `missing` stages, and a monkeypatched failing validator surfaces as `failed`.
+
+**What it deliberately does not do.** There is no code path in `app/` that can return a caption, not
+even a placeholder, because no caption model exists in this repository. The description panel and the
+narration panel are marked NOT IMPLEMENTED with the stage number, the three playback buttons carry a
+real `disabled` attribute plus `aria-describedby` explaining why, and the transcript section is present
+but empty. No BLEU score, accuracy figure or latency claim appears in any template.
+
+**Measured timings** (2026-10-12, Apple M2, 8 GB, CPU only, TensorFlow 2.21.0, no GPU/Metal backend)
+
+| Measurement | Value |
+| --- | --- |
+| VGG16 fc2 model load | **5.52 s**, once per process (5.47 s on the live server) |
+| First analyze request after load | **307.6 ms** (275 ms on the live server) |
+| Warm analyze requests | median **109.3 ms**, range 105-115 ms over 9 runs |
+| Peak process RSS | **1.14 GB** after one load plus six inferences |
+| Page weight | Home 11.9 KB, Workspace 12.6 KB of HTML |
+
+These are wall-clock measurements on this machine, not a throughput claim. Stage 2's batch rate
+(10.7 images/s at batch 32) is not comparable: single-image requests carry per-call overhead.
+
+**Environment caveats**
+- The ImageNet weights (~553 MB) are downloaded by Keras into `~/.keras/models/` on first use and are
+  **not** a pip dependency. One online run is needed; everything else, including the whole test suite,
+  works offline because the UI tests monkeypatch the model.
+- Loading VGG16 costs roughly 1 GB of resident memory in the web process. On an 8 GB machine, do not
+  run training and the web app at once.
+- The model loads lazily and **once**: `get_model` uses double-checked locking because `Flask.run`
+  sets `threaded=True`, so two concurrent first requests would otherwise both load it.
+  `test_lazy_model_load_happens_once_under_concurrency` runs four threads and asserts a single build.
+- `app.run()` is the Werkzeug development server. No production WSGI server, HTTPS, rate limiting or
+  authentication is configured, and none is claimed.
+
+**Upload handling.** The filename and the browser-supplied MIME type are never trusted. Validation
+order: a file was sent; body size (Werkzeug `MAX_CONTENT_LENGTH` = 8 MB, re-checked on the received
+bytes); Pillow can identify the format from the bytes; format in {JPEG, PNG, WEBP, BMP}; both sides
+>= 32 px and <= 10,000 px with <= 40M pixels; then a full decode to prove it really loads.
+`DecompressionBombError` is named explicitly because it is **not** an `OSError` or `ValueError` and
+would otherwise escape as a 500. A text file renamed `.png` is rejected on its bytes.
+
+**Error handling.** Every failure returns a controlled response and never a partial or fabricated
+success: 400 for a bad upload, 413 for an oversized body, 405/404 as JSON on `/api/` paths, 503 when
+the model or the saved selection cannot be loaded, and a fixed 500 JSON message for anything
+unhandled. Underlying exception text is logged, not returned, so local paths and tensor shapes do not
+reach the client. A corrupt `fisher_top512_indices.npy` and a non-ascending index array are both
+refused with an actionable message.
+
+**Design system.** `design.md` is the source of truth. `app/static/css/tokens.css` is **generated**
+from its frontmatter by `scripts/build_tokens.py`; `--check` fails if the committed file is stale and
+`test_tokens_css_matches_design_md` enforces parity. Tests also forbid a hardcoded hex outside
+`tokens.css`, any `@media (prefers-color-scheme)` at-rule (there is no dark mode), and inline `style`
+attributes in templates. Accessibility: skip link first in tab order, one `h1` per page, header/nav/
+main/footer landmarks, `aria-live` status region for state changes, the drop zone is a real
+`<label for>` so keyboard and click work without JavaScript, 44 px targets, visible 2 px Fern focus
+ring, and `prefers-reduced-motion` handled in both stylesheets including the progress bar.
+
+**Fonts and favicon.** Avegas Royale is still absent and unlicensed, so display type renders in the
+documented fallback (`"Iowan Old Style", Georgia, serif`) — expected, per design.md, not a bug.
+Atkinson Hyperlegible Next is not vendored either; body text uses its documented fallback stack. **No
+favicon is shipped**: the supplied `favicon.png` is 1774x887 and design.md forbids altering supplied
+assets, so a square export is still an outstanding asset. A test asserts no `rel="icon"` is emitted.
+
+**Running the UI tests**
+```bash
+pytest tests/test_app.py        # 62 tests, no network, no VGG16 weights needed
+pytest                          # the whole suite, 241 tests
+python scripts/build_tokens.py --check
+```
+
+**Files** `app/__init__.py` (factory), `app/routes.py` (two pages, two API endpoints, error handlers),
+`app/pipeline.py` (real stage status), `app/inference.py` (lazy model, Stage 2 code path, read-only
+selection), `app/uploads.py` (byte-level validation), `app/templates/` (base, nav, footer, macros,
+workspace, index, error), `app/static/css/` (generated tokens plus base, layout, components),
+`app/static/js/workspace.js`, `scripts/build_tokens.py`, `tests/test_app.py`. The logo moved to
+`app/static/brand/retinex-logo.png` by `git mv`, bytes unchanged.

@@ -42,9 +42,16 @@ Folders are placeholders; contents will evolve.
 ## Installation
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"      # Stage 1 needs only Pillow (+ pytest)
+pip install -e ".[dev]"
 ```
-Only Stage 1 dependencies are listed; later stages will add theirs.
+That installs everything the implemented stages and the web application need: Pillow, NumPy,
+TensorFlow, Keras, scikit-learn and Flask as runtime dependencies, plus pytest and PyYAML for
+development. Python 3.12 or newer is required (NumPy 2.5 needs 3.12).
+
+**One prerequisite is not a pip package.** The first time VGG16 runs, Keras downloads its ImageNet
+weights (about 553 MB) into `~/.keras/models/`, which needs network access once. Feature extraction
+and the Workspace both depend on that file; everything else, including the whole test suite, works
+offline.
 
 
 ## Dataset Setup
@@ -199,13 +206,45 @@ NOT IMPLEMENTED YET
 ## Inference
 NOT IMPLEMENTED YET
 
-## Flask Application
-NOT IMPLEMENTED YET
+## Web Application
+A Flask application with two surfaces: the Workspace, which runs the implemented part of the
+pipeline on one uploaded image, and Home, which explains the method and shows the real stage status.
+
+```bash
+source .venv/bin/activate
+python -c "from app import create_app; create_app().run(port=5055)"
+```
+
+| Surface | URL | What it does |
+| --- | --- | --- |
+| Home | http://127.0.0.1:5055/ | The method, the experiment, and what has and has not been built |
+| Workspace | http://127.0.0.1:5055/workspace | Upload an image, extract real features, see the live pipeline status |
+| Pipeline API | http://127.0.0.1:5055/api/pipeline | `GET`, returns the nine stages with their real status |
+| Analyze API | http://127.0.0.1:5055/api/analyze | `POST` multipart `image=@file`, returns measured feature statistics |
+
+**What the Workspace really does:** it loads your image through the same code path Stage 2 used
+(`keras.utils.load_img(target_size=(224,224))` to `img_to_array` to `vgg16.preprocess_input`),
+produces the 4096-d fc2 vector, then applies the **saved** Stage 4 top-512 indices to it. Fisher
+Score is not refitted and no training artifact is written. The uploaded image is held in memory for
+that one request and is not stored.
+
+**What it does not do:** generate a caption or speak one. Stages 5 to 9 do not exist, so the
+description and narration panels are marked NOT IMPLEMENTED and the playback controls are disabled.
+No placeholder caption is ever shown.
+
+Design tokens are generated from `design.md` rather than transcribed:
+```bash
+python scripts/build_tokens.py            # regenerate app/static/css/tokens.css
+python scripts/build_tokens.py --check    # fail if the committed CSS is stale
+```
 
 ## Testing
 ```bash
-pytest        # synthetic fixtures only; does not need Flickr8K
+pytest                          # the whole suite
+pytest tests/test_app.py        # the web application only
 ```
+The suite uses synthetic fixtures throughout and needs neither Flickr8K nor the VGG16 weights: the
+UI tests monkeypatch the model, so nothing downloads and no page render loads it.
 
 
 ## Reproducibility

@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}RetineX{% endblock %}</title>
+  <meta name="description" content="{% block description %}RetineX turns an image into a written description, built as an academic research project on image captioning.{% endblock %}">
+  {# design.md Outstanding Assets: the supplied favicon.png is 1774x887, so it is not a usable
+     favicon. No favicon is shipped until a square export is approved. #}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/layout.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  {% include "partials/nav.html" %}
+  <main id="main">
+    {% block main %}{% endblock %}
+  </main>
+  {% include "partials/footer.html" %}
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,41 @@
+{# Components. Every value resolves to a token from design.md; no literals here. #}
+
+{% macro status_chip(status, label) -%}
+  {%- set cls = {'complete': 'chip-ok', 'failed': 'chip-error',
+                 'missing': 'chip-error', 'not_implemented': 'chip-pending'}[status] -%}
+  <span class="chip {{ cls }}">
+    <span class="chip-dot" aria-hidden="true"></span>{{ label }}
+  </span>
+{%- endmacro %}
+
+{% macro pipeline_list(stages) -%}
+<ol class="pipeline">
+  {% for s in stages %}
+  <li class="pipeline-stage{% if s.done %} is-done{% endif %}">
+    <span class="pipeline-index tabular" aria-hidden="true">{{ "%02d"|format(s.index) }}</span>
+    <span>
+      <span class="pipeline-name">{{ s.name }}</span>
+      <span class="pipeline-detail">{{ s.detail }}</span>
+      {% if s.problems %}
+      <ul class="pipeline-detail">
+        {% for p in s.problems %}<li>{{ p }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+    </span>
+    {{ status_chip(s.status, s.label) }}
+  </li>
+  {% endfor %}
+</ol>
+{%- endmacro %}
+
+{% macro stat_row(label, value) -%}
+  <tr><th scope="row">{{ label }}</th><td>{{ value }}</td></tr>
+{%- endmacro %}
+
+{% macro not_implemented(state) -%}
+<div class="notice notice-warning stack">
+  <p><strong>{{ state.heading }}</strong></p>
+  <p class="caption">{{ state.body }}</p>
+  <p class="caption">Pipeline stage {{ state.stage }} of 9.</p>
+</div>
+{%- endmacro %}

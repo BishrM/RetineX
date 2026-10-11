@@ -1,0 +1,43 @@
+/* Grid, content widths and vertical rhythm. design.md Layout. */
+
+.shell { width: 100%; max-width: 1120px; margin-inline: auto; padding-inline: var(--space-lg); }
+.prose { max-width: 68ch; }
+main { flex: 1 0 auto; }
+
+.section { padding-block: var(--space-3xl); }
+.section-tight { padding-block: var(--space-2xl); }
+/* the one approved dark treatment: Pine Teal with Dust Grey text. At most one band per page. */
+.section-inverse {
+  background-color: var(--color-on-surface);
+  color: var(--color-neutral);
+  padding-block: var(--space-3xl);
+  border-radius: var(--radius-none);
+}
+.section-inverse h2, .section-inverse .display-lg { color: var(--color-neutral); }
+
+.stack > * + * { margin-top: var(--space-md); }
+.stack-lg > * + * { margin-top: var(--space-lg); }
+.stack-xl > * + * { margin-top: var(--space-xl); }
+
+.grid { display: grid; gap: var(--space-lg); }
+.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+/* Workspace: upload column beside results column on desktop */
+.workspace-grid { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); align-items: start; }
+
+.row { display: flex; gap: var(--space-md); align-items: center; flex-wrap: wrap; }
+.row-between { justify-content: space-between; }
+
+.divider { height: 1px; background-color: var(--color-neutral); border: 0; }
+.rule-strong { height: 2px; background-color: var(--color-secondary); border: 0; }
+
+@media (max-width: 1023px) {
+  .workspace-grid, .cols-3 { grid-template-columns: minmax(0, 1fr); }
+  .section { padding-block: var(--space-2xl); }
+  .section-inverse { padding-block: var(--space-2xl); }
+}
+@media (max-width: 639px) {
+  .cols-2 { grid-template-columns: minmax(0, 1fr); }
+  .shell { padding-inline: var(--space-md); }
+  .section, .section-inverse { padding-block: var(--space-xl); }
+}

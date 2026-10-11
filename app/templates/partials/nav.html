@@ -1,0 +1,18 @@
+{# design.md Navigation: one horizontal bar, canvas background, a single hairline rule, no shadow,
+   no blur, no shrink on scroll. Only surfaces that exist are linked. #}
+<header class="site-header">
+  <div class="shell">
+    <a class="brand" href="{{ url_for('main.home') }}">
+      <img src="{{ url_for('static', filename='brand/retinex-logo.png') }}"
+           alt="RetineX: turning vision into voice" width="2039" height="771">
+    </a>
+    <nav aria-label="Primary">
+      <ul class="nav-links">
+        <li><a href="{{ url_for('main.home') }}"
+               {% if request.endpoint == 'main.home' %}aria-current="page"{% endif %}>Home</a></li>
+        <li><a href="{{ url_for('main.workspace') }}"
+               {% if request.endpoint == 'main.workspace' %}aria-current="page"{% endif %}>Workspace</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>

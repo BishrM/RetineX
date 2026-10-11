@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% from "macros.html" import pipeline_list, not_implemented, stat_row %}
+{% block title %}Workspace | RetineX{% endblock %}
+{% block description %}Upload an image and run the implemented part of the RetineX pipeline: VGG16 fc2 feature extraction and the frozen Fisher Score selection.{% endblock %}
+
+{% block main %}
+<div class="shell section-tight stack-lg">
+  <div class="stack">
+    <p class="label muted">Workspace</p>
+    <h1>Run the implemented pipeline on one image</h1>
+    <p class="body-lg prose muted">
+      This page runs the stages that exist: VGG16 fc2 feature extraction and the frozen top-512
+      Fisher Score selection. It does not generate a caption, because no caption model has been
+      built yet. Every number shown is measured from your image at the moment you upload it.
+    </p>
+    <p class="caption muted tabular">
+      {{ summary.complete }} of {{ summary.total }} pipeline stages are complete.
+      {{ summary.not_implemented }} are not implemented.
+      {% if summary.problems %}{{ summary.problems }} report a problem.{% endif %}
+    </p>
+  </div>
+
+  <hr class="rule-strong">
+
+  <div class="grid workspace-grid">
+    <!-- ---------------------------------------------------------------- upload -->
+    <section class="panel stack-lg" aria-labelledby="upload-heading">
+      <div class="panel-head">
+        <h2 id="upload-heading">Your image</h2>
+      </div>
+
+      <form id="analyze-form" method="post" action="{{ url_for('main.api_analyze') }}"
+            enctype="multipart/form-data" class="stack">
+        <label class="label" for="image-input">Image file</label>
+        <label class="dropzone" id="dropzone" for="image-input">
+          <span class="stack">
+            <span><strong>Choose an image</strong> or drop one here</span>
+            <span class="caption muted">
+              {{ limits.formats }}, up to {{ limits.max_mb }} MB,
+              at least {{ limits.min_side }} pixels on each side
+            </span>
+          </span>
+        </label>
+        <input type="file" id="image-input" name="image"
+               accept="image/jpeg,image/png,image/webp,image/bmp" class="visually-hidden">
+        <p class="caption muted" id="file-hint">No file chosen yet.</p>
+
+        <div class="row">
+          <button type="submit" class="btn btn-primary" id="analyze-button" disabled>
+            Extract features
+          </button>
+          <button type="button" class="btn btn-secondary" id="reset-button" hidden>
+            Clear image
+          </button>
+        </div>
+        <p class="caption muted">
+          The image is processed in memory for this request and is not stored.
+        </p>
+      </form>
+
+      <div id="preview-wrap" hidden class="stack">
+        <hr class="divider">
+        <h3>Preview</h3>
+        <figure class="image-frame stack">
+          <img id="preview-image" alt="" src="">
+        </figure>
+        <figcaption class="caption muted" id="preview-meta"></figcaption>
+      </div>
+    </section>
+
+    <!-- --------------------------------------------------------------- results -->
+    <div class="stack-lg">
+      <!-- live region: state changes are announced, per design.md Accessibility -->
+      <p class="visually-hidden" role="status" aria-live="polite" id="live-region"></p>
+
+      <section class="panel stack" aria-labelledby="caption-heading">
+        <div class="panel-head">
+          <h2 id="caption-heading">Description</h2>
+          <span class="chip chip-pending"><span class="chip-dot" aria-hidden="true"></span>Not implemented</span>
+        </div>
+        {{ not_implemented(caption) }}
+      </section>
+
+      <section class="panel stack" aria-labelledby="features-heading">
+        <div class="panel-head">
+          <h2 id="features-heading">Feature extraction</h2>
+          <span class="chip chip-ok" id="features-chip" hidden>
+            <span class="chip-dot" aria-hidden="true"></span>Measured
+          </span>
+        </div>
+
+        <div id="features-idle">
+          <p class="muted">Upload an image and choose <strong>Extract features</strong>. The results
+            here are real output from the committed VGG16 and Fisher Score artifacts.</p>
+        </div>
+
+        <div id="features-loading" hidden class="stack">
+          <p>Extracting features</p>
+          <div class="progress" role="presentation"></div>
+          <p class="caption muted">The VGG16 model loads once per server process, which makes the
+            first run slower than the ones after it.</p>
+        </div>
+
+        <div id="features-error" hidden class="notice notice-error stack">
+          <p><strong>Feature extraction did not run</strong></p>
+          <p class="caption" id="features-error-message"></p>
+        </div>
+
+        <div id="features-result" hidden class="stack-lg">
+          <div class="scroll-x">
+            <table class="readout">
+              <caption>Measured for this image, this request.</caption>
+              <tbody id="features-table"></tbody>
+            </table>
+          </div>
+          <div class="scroll-x">
+            <table class="readout">
+              <caption>Strongest selected dimensions, with their original index in the 4096-d vector.</caption>
+              <thead>
+                <tr><th scope="col">Position</th><th scope="col">Source index</th><th scope="col">Activation</th></tr>
+              </thead>
+              <tbody id="top-table"></tbody>
+            </table>
+          </div>
+          <p class="caption muted" id="features-provenance"></p>
+        </div>
+      </section>
+
+      <section class="panel stack" aria-labelledby="narration-heading">
+        <div class="panel-head">
+          <h2 id="narration-heading">Narration</h2>
+          <span class="chip chip-pending"><span class="chip-dot" aria-hidden="true"></span>Not connected</span>
+        </div>
+        {{ not_implemented(narration) }}
+        {# design.md: audio never autoplays, and the transcript is always present because the text
+           is the primary output. Controls are disabled, not merely styled as disabled. #}
+        <div class="row" role="group" aria-label="Narration playback">
+          <button type="button" class="btn btn-subtle" disabled aria-describedby="narration-why">Play</button>
+          <button type="button" class="btn btn-subtle" disabled aria-describedby="narration-why">Pause</button>
+          <button type="button" class="btn btn-subtle" disabled aria-describedby="narration-why">Stop</button>
+        </div>
+        <p class="caption muted" id="narration-why">
+          Disabled until a caption model and text-to-speech are implemented. No audio is produced.
+        </p>
+        <hr class="divider">
+        <h3>Transcript</h3>
+        <p class="muted">Empty. A transcript appears here when narration exists, and the text will
+          always be available alongside any audio.</p>
+      </section>
+    </div>
+  </div>
+
+  <hr class="rule-strong">
+
+  <section class="stack-lg" aria-labelledby="pipeline-heading">
+    <div class="stack">
+      <h2 id="pipeline-heading">Pipeline status</h2>
+      <p class="prose muted">Stages 1 to 4 are checked against the artifacts on disk every time this
+        page loads, by running the same validators the command line uses. A missing or altered
+        artifact is reported here rather than hidden.</p>
+    </div>
+    {{ pipeline_list(stages) }}
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/workspace.js') }}" defer></script>
+{% endblock %}
