@@ -4,15 +4,23 @@
 **RetineX** — Deep Learning Based Image Caption Generation using Fisher Score Feature Optimization, LSTM and
 Neural Voice Narration for Real-Time Visual Accessibility. Academic major project.
 
-## Current status: 0% implemented
-Nothing below "Intended methodology" exists yet. Workspace, docs and a local Git repo only.
+## Current status: Stages 1-2 complete
+**Implemented and verified in this repo:** Stage 1 — the dataset layer (`src/retinex/dataset.py`), Flickr8K
+(third-party Kaggle copy) validation, and the frozen image-level 6000/1000/1000 split, committed and passing
+`verify`. Stage 2 — VGG16 fc2 feature extraction (`src/retinex/features.py`), **complete: all 8,000 rows of a
+(8000, 4096) float32 matrix**, passing `python -m retinex.features validate`. 41 pytest tests pass
+(20 dataset, 21 features), all on synthetic fixtures.
+
+**Not implemented:** everything after Stage 2 — pseudo-classes, Fisher mask, both LSTM models, BLEU, inference,
+gTTS and the Flask app. No model has been trained, no caption generated and no BLEU score measured in this
+repo. The per-stage table below is authoritative; treat any stage not marked COMPLETED as nonexistent.
 
 | Stage | Status |
 |---|---|
 | Workspace / docs / git | done (initial) |
-| Dataset layer code + tests (`src/retinex/dataset.py`) | COMPLETED (16 synthetic tests pass) |
+| Dataset layer code + tests (`src/retinex/dataset.py`) | COMPLETED (20 synthetic tests pass) |
 | Real Flickr8K (Kaggle copy) validated, frozen split generated and verified | COMPLETED (source provenance NOT VERIFIED against the official files) |
-| VGG16 fc2 feature extraction | NOT IMPLEMENTED |
+| VGG16 fc2 feature extraction | COMPLETED (8,000 / 8,000 rows; `validate` passes; see Stage 2 below) |
 | TF-IDF + K-Means pseudo-classes | NOT IMPLEMENTED |
 | Fisher Score mask (top 512) | NOT IMPLEMENTED |
 | Baseline LSTM (4096-d) | NOT IMPLEMENTED |
@@ -21,7 +29,7 @@ Nothing below "Intended methodology" exists yet. Workspace, docs and a local Git
 | Inference | NOT IMPLEMENTED |
 | gTTS narration | NOT IMPLEMENTED |
 | Flask app | NOT IMPLEMENTED |
-| Tests for stages after Stage 1 | NOT IMPLEMENTED |
+| Tests for stages after Stage 1 | PARTIAL — `tests/test_features.py` only (21 tests, synthetic); Stages 3+ NOT IMPLEMENTED |
 
 ## Origin and why a rebuild
 Evolved from https://github.com/MiteshPuthran/Image-Caption-Generator (itself an implementation of
@@ -113,3 +121,76 @@ Files: `data/flickr8k/splits/{train,val,test}.txt`, `split_meta.json` (committed
 **Effect on later stages:** the dataset is a third-party copy; state this in the final report.
 
 **For future stages:** read the split via `retinex.dataset.load_split`; never call `make_split`. Split IDs are filenames incl. `.jpg`. Captions come from `parse_captions` (raw text, no tokenization yet).
+
+## Stage 2: VGG16 fc2 feature extraction — COMPLETED
+**Status: COMPLETED.** All 8,000 frozen images extracted into a (8000, 4096) float32 matrix.
+`python -m retinex.features validate` passes: "shape, dtype, ids, split membership, finiteness and checksums
+verified". The run was interrupted once at row 3,168 (critically low battery) and resumed from that
+checkpoint; `vgg16_fc2_meta.json` records `resumed_from_row: 3168`.
+
+**Method:** ImageNet-pretrained VGG16, `include_top=True`, truncated at the `fc2` layer, `trainable = False`.
+Images loaded at 224x224 via `keras.utils.load_img` -> `img_to_array` -> `keras.applications.vgg16.preprocess_input`,
+batches of 32, `predict_on_batch`. Row order is the sorted union of the frozen split, so it is deterministic
+across machines and independent of split membership.
+
+**Leakage position:** VGG16 is pretrained and frozen, so nothing is fitted on this data and extracting
+val/test rows alongside train rows transfers no information. Captions are never opened by this module
+(`uses_captions: false`, asserted structurally by `test_extraction_needs_no_captions`). The train-only
+fitting rules in CLAUDE.md bind Stage 3 (TF-IDF/K-Means) and Stage 4 (Fisher), not this stage.
+
+**Artifacts** (`artifacts/features/`, git-ignored, 131,072,128 bytes for the matrix):
+
+| File | Contents |
+| --- | --- |
+| `vgg16_fc2.npy` | float32, shape (8000, 4096). SHA-256 `4f6a5aa0e43eba43ac9db8b06165568a53bd9d5781e91e6d457bfb169e47ec26` |
+| `vgg16_fc2_ids.txt` | 8,000 ids, line n maps to row n. SHA-256 `622693cb7bc46ea7e49c3e88546a030ea45eb7f98795e300b6669e7b27b55eb7` |
+| `vgg16_fc2_meta.json` | model, preprocessing, versions, hardware, split counts, `status: "complete"`, both checksums |
+| `vgg16_fc2.progress.json` | Absent, as intended: `extract` deletes it after writing metadata. Its absence is the completion marker. |
+
+**Measured consistency checks (2026-10-11, read-only)**
+- `vgg16_fc2_ids.txt` is identical to the sorted union of the frozen split (`ids == frozen_ids`), and all
+  6000/1000/1000 split members resolve to a row.
+- `ids_sha256` in the metadata matches the id list recomputed from the split; `artifact_sha256` for both the
+  matrix and the id file matches the files on disk.
+- `data/flickr8k/splits/split_meta.json` SHA-256 recorded in the metadata as
+  `efaa4042653e1fcbf0de2f0a8a5071cbea5cec212c791f6d87b6715e3586c740`; `dataset verify` still passes.
+
+**Measured feature statistics** (whole matrix, float64 accumulation)
+- mean 0.5572, min 0.0000, max 27.8475; no NaN or infinite values; **zero all-zero rows**.
+- 69.9% of entries are exactly 0.0, which is expected: `fc2` is ReLU-activated, so sparsity is a property of
+  the layer, not a sign of missing data.
+
+**Timing — read this before quoting it.** `runtime_seconds: 453.7` in the metadata is the wall time of the
+**resumed run only** (rows 3,168-7,999, i.e. 4,832 images => about 10.7 images/s, CPU-only). The first run's
+elapsed time was never recorded, so **the total wall time for all 8,000 images is not measured and must not be
+stated**. Hardware per the metadata: macOS 26.6.2 arm64 (M2), devices `["/physical_device:CPU:0"]` — no GPU or
+Metal backend was used. Versions: Python 3.12.0, TensorFlow 2.21.0, Keras 3.15.1, NumPy 2.5.3.
+
+**Reproducing or re-running**
+- `python -m retinex.features validate` re-checks the existing artifacts without recomputing them.
+- `python -m retinex.features extract` is resumable per batch: rows are written and `flush()`ed before the
+  progress file advances, so an interruption costs at most one batch. On resume it accepts a checkpoint only
+  when the recomputed id digest and the recorded shape both match.
+- **Never pass `--no-resume`**, and never delete, move or regenerate the artifacts: a full re-extraction is
+  expensive on this CPU-only machine (at the one measured rate of ~10.7 images/s it would be on the order of
+  12-13 minutes, an extrapolation and not a measurement) and the checksums in the metadata would no longer
+  describe the committed record.
+
+**Known limitations of the safeguards (not defects in the current artifacts)**
+- The `.npy` header shape is never compared with the expected shape on resume; `open_memmap(mode="r+")`
+  ignores its `shape` argument (verified), so the resume gate trusts the progress file's own `shape` field.
+  A short matrix plus a matching progress file would fail with a broadcast `ValueError` rather than being
+  rejected up front.
+- The progress file holds only a row count, no checksum of written rows, so it could not have detected a row
+  that was flushed but corrupted. The finiteness, sparsity and no-all-zero-row checks above are the
+  substitute evidence, and the final metadata now carries a whole-matrix SHA-256.
+- If the frozen split ever changes, `extract` prints "existing artifacts do not match the frozen split;
+  starting over" and reopens the matrix with mode `w+`, zeroing it. The frozen split must stay frozen.
+- `json.loads` on the progress file is unguarded and that file is not written atomically, so a crash during
+  its 119-byte write would make the next resume abort with a traceback. Fail-loud, not data-losing.
+
+**Code** `src/retinex/features.py` (`frozen_ids`, `extract`, `validate_features`, CLI `extract|validate`) and
+`tests/test_features.py` (21 synthetic tests: dtype, shape, row count, duplicate/unexpected/missing ids,
+NaN/inf, tampered ids and matrix, incomplete status, malformed metadata, caption independence, resume skips
+completed rows, resume rejected on a changed split). Stage 2 added `numpy`, `tensorflow>=2.16` and `keras>=3`
+to `pyproject.toml`; before that only `pillow` was declared and a clean clone could not import this module.

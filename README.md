@@ -95,6 +95,27 @@ python -m retinex.dataset verify
 ```
 
 
+## Feature Extraction (Stage 2)
+Extracts a 4096-d VGG16 `fc2` vector for each of the 8,000 frozen images. VGG16 is ImageNet-pretrained and
+frozen; it is never trained or fine-tuned, and captions are never read, so no validation or test information
+can reach a feature.
+
+```bash
+python -m retinex.features extract      # batched, resumable, validates when finished
+python -m retinex.features validate     # re-check existing artifacts
+```
+
+Writes to `artifacts/features/` (git-ignored, about 131 MB):
+
+| File | Contents |
+| --- | --- |
+| `vgg16_fc2.npy` | float32 matrix, shape (8000, 4096) |
+| `vgg16_fc2_ids.txt` | 8,000 image ids; line n maps to row n |
+| `vgg16_fc2_meta.json` | model, preprocessing, versions, hardware, SHA-256 checksums, and `runtime_seconds` — the wall time of the **last run only**, which is less than the total if the run was resumed (`resumed_from_row`) |
+
+Row order is the sorted union of the frozen split, so it is deterministic across machines. Interrupting the
+run is safe: progress is checkpointed per batch and re-running resumes from the last completed row.
+
 ## Training
 NOT IMPLEMENTED YET
 
