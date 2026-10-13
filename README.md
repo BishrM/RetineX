@@ -217,8 +217,8 @@ python -c "from app import create_app; create_app().run(port=5055)"
 
 | Surface | URL | What it does |
 | --- | --- | --- |
-| Home | http://127.0.0.1:5055/ | The method, the experiment, and what has and has not been built |
-| Workspace | http://127.0.0.1:5055/workspace | Upload an image, extract real features, see the live pipeline status |
+| Home | http://127.0.0.1:5055/ | What RetineX is for, how it works in three steps, and which of them are built |
+| Workspace | http://127.0.0.1:5055/workspace | Upload an image and run the implemented part of the pipeline on it |
 | Pipeline API | http://127.0.0.1:5055/api/pipeline | `GET`, returns the nine stages with their real status |
 | Analyze API | http://127.0.0.1:5055/api/analyze | `POST` multipart `image=@file`, returns measured feature statistics |
 
@@ -229,13 +229,24 @@ Score is not refitted and no training artifact is written. The uploaded image is
 that one request and is not stored.
 
 **What it does not do:** generate a caption or speak one. Stages 5 to 9 do not exist, so the
-description and narration panels are marked NOT IMPLEMENTED and the playback controls are disabled.
-No placeholder caption is ever shown.
+description and narration panels say so and the playback controls are disabled. No placeholder
+caption is ever shown.
+
+The pages themselves no longer render the nine stage rows; that was a repository status report, not
+interface content. The stage status is still computed by the same four validators and is still
+served in full by `GET /api/pipeline`.
 
 Design tokens are generated from `design.md` rather than transcribed:
 ```bash
 python scripts/build_tokens.py            # regenerate app/static/css/tokens.css
 python scripts/build_tokens.py --check    # fail if the committed CSS is stale
+```
+
+So are the served brand exports. The supplied masters (`favicon-source.png`, `retinex-logo.png`)
+are never written to; the favicons and the flush-cropped navigation logo are derived from them:
+```bash
+python scripts/build_favicon.py           # regenerate app/static/brand/*.png exports
+python scripts/build_favicon.py --check   # fail if a committed export is stale
 ```
 
 ## Testing

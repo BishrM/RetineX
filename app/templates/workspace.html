@@ -1,26 +1,19 @@
 {% extends "base.html" %}
-{% from "macros.html" import pipeline_list, not_implemented, stat_row %}
+{% from "macros.html" import not_implemented %}
 {% block title %}Workspace | RetineX{% endblock %}
-{% block description %}Upload an image and run the implemented part of the RetineX pipeline: VGG16 fc2 feature extraction and the frozen Fisher Score selection.{% endblock %}
+{% block description %}Upload an image and watch RetineX read it. The part of the pipeline that is finished runs on your image and reports exactly what it measured.{% endblock %}
 
 {% block main %}
 <div class="shell section-tight stack-lg">
   <div class="stack">
     <p class="label muted">Workspace</p>
-    <h1>Run the implemented pipeline on one image</h1>
+    <h1>Read an image</h1>
     <p class="body-lg prose muted">
-      This page runs the stages that exist: VGG16 fc2 feature extraction and the frozen top-512
-      Fisher Score selection. It does not generate a caption, because no caption model has been
-      built yet. Every number shown is measured from your image at the moment you upload it.
-    </p>
-    <p class="caption muted tabular">
-      {{ summary.complete }} of {{ summary.total }} pipeline stages are complete.
-      {{ summary.not_implemented }} are not implemented.
-      {% if summary.problems %}{{ summary.problems }} report a problem.{% endif %}
+      Choose a photograph and RetineX will read it. Writing the description and speaking it aloud
+      are still being built, so those two panels say so instead of showing something invented.
+      Everything else on this page is measured from your image at the moment you upload it.
     </p>
   </div>
-
-  <hr class="rule-strong">
 
   <div class="grid workspace-grid">
     <!-- ---------------------------------------------------------------- upload -->
@@ -47,7 +40,7 @@
 
         <div class="row">
           <button type="submit" class="btn btn-primary" id="analyze-button" disabled>
-            Extract features
+            Read this image
           </button>
           <button type="button" class="btn btn-secondary" id="reset-button" hidden>
             Clear image
@@ -76,33 +69,33 @@
       <section class="panel stack" aria-labelledby="caption-heading">
         <div class="panel-head">
           <h2 id="caption-heading">Description</h2>
-          <span class="chip chip-pending"><span class="chip-dot" aria-hidden="true"></span>Not implemented</span>
+          <span class="chip chip-pending"><span class="chip-dot" aria-hidden="true"></span>In development</span>
         </div>
         {{ not_implemented(caption) }}
       </section>
 
       <section class="panel stack" aria-labelledby="features-heading">
         <div class="panel-head">
-          <h2 id="features-heading">Feature extraction</h2>
+          <h2 id="features-heading">What RetineX saw</h2>
           <span class="chip chip-ok" id="features-chip" hidden>
             <span class="chip-dot" aria-hidden="true"></span>Measured
           </span>
         </div>
 
         <div id="features-idle">
-          <p class="muted">Upload an image and choose <strong>Extract features</strong>. The results
-            here are real output from the committed VGG16 and Fisher Score artifacts.</p>
+          <p class="muted">Choose an image and select <strong>Read this image</strong>. What appears
+            here is measured from your own file, not an example.</p>
         </div>
 
         <div id="features-loading" hidden class="stack">
-          <p>Extracting features</p>
+          <p>Reading your image</p>
           <div class="progress" role="presentation"></div>
-          <p class="caption muted">The VGG16 model loads once per server process, which makes the
-            first run slower than the ones after it.</p>
+          <p class="caption muted">The first image after the server starts takes a few seconds
+            longer, because the model loads once and is then kept ready.</p>
         </div>
 
         <div id="features-error" hidden class="notice notice-error stack">
-          <p><strong>Feature extraction did not run</strong></p>
+          <p><strong>That image could not be read</strong></p>
           <p class="caption" id="features-error-message"></p>
         </div>
 
@@ -115,7 +108,7 @@
           </div>
           <div class="scroll-x">
             <table class="readout">
-              <caption>Strongest selected dimensions, with their original index in the 4096-d vector.</caption>
+              <caption>The strongest signals RetineX kept, and where each came from.</caption>
               <thead>
                 <tr><th scope="col">Position</th><th scope="col">Source index</th><th scope="col">Activation</th></tr>
               </thead>
@@ -129,7 +122,7 @@
       <section class="panel stack" aria-labelledby="narration-heading">
         <div class="panel-head">
           <h2 id="narration-heading">Narration</h2>
-          <span class="chip chip-pending"><span class="chip-dot" aria-hidden="true"></span>Not connected</span>
+          <span class="chip chip-pending"><span class="chip-dot" aria-hidden="true"></span>In development</span>
         </div>
         {{ not_implemented(narration) }}
         {# design.md: audio never autoplays, and the transcript is always present because the text
@@ -140,27 +133,15 @@
           <button type="button" class="btn btn-subtle" disabled aria-describedby="narration-why">Stop</button>
         </div>
         <p class="caption muted" id="narration-why">
-          Disabled until a caption model and text-to-speech are implemented. No audio is produced.
+          These stay disabled until there is a description to speak. No audio is produced.
         </p>
         <hr class="divider">
         <h3>Transcript</h3>
-        <p class="muted">Empty. A transcript appears here when narration exists, and the text will
-          always be available alongside any audio.</p>
+        <p class="muted">Empty for now. The spoken text will always appear here as well, because the
+          written description is the primary output and the audio is a second channel.</p>
       </section>
     </div>
   </div>
-
-  <hr class="rule-strong">
-
-  <section class="stack-lg" aria-labelledby="pipeline-heading">
-    <div class="stack">
-      <h2 id="pipeline-heading">Pipeline status</h2>
-      <p class="prose muted">Stages 1 to 4 are checked against the artifacts on disk every time this
-        page loads, by running the same validators the command line uses. A missing or altered
-        artifact is reported here rather than hidden.</p>
-    </div>
-    {{ pipeline_list(stages) }}
-  </section>
 </div>
 {% endblock %}
 

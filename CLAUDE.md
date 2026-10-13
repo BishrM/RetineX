@@ -4,7 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## PROJECT STATUS
 
-**0% IMPLEMENTED.** This is a fresh rebuild. Only the workspace, documentation and Git foundation exist.
+**Stages 1-4 of 9 are implemented; stages 5-9 are NOT IMPLEMENTED.** Built and verified here: the
+dataset layer and frozen 6000/1000/1000 split, VGG16 fc2 extraction (8000 x 4096), TF-IDF + K-Means
+pseudo-classes (k=20), and Fisher Score selection (4096 -> 512), each passing its own validator. Also
+built: a Flask web UI serving exactly those stages. **Not built: both LSTM models, BLEU evaluation,
+caption generation and narration.** No model has been trained, no caption generated and no BLEU score
+measured in this repository.
 Only functionality that is implemented, tested and verified *in this repository* may be marked complete.
 Label anything unverified `NOT VERIFIED` and anything unbuilt `NOT IMPLEMENTED`. Never fabricate results
 (BLEU, accuracy, dataset stats, feature/Fisher outputs, training completion, Flask behaviour, timings).

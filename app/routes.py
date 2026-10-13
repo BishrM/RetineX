@@ -16,22 +16,23 @@ from . import inference, pipeline, uploads
 
 bp = Blueprint("main", __name__)
 
-# What the Workspace says where a caption would go. One source of truth for the honest state.
+# What the Workspace says where a caption would go. One source of truth for the honest state:
+# the page and the JSON API read these same two dicts, so they cannot drift apart.
 CAPTION_STATE = {
     "implemented": False,
     "stage": 8,
     "heading": "Caption generation is not implemented",
-    "body": ("No caption model exists in this repository yet. Stages 5 to 7, the two LSTM decoders "
-             "and the BLEU evaluation, have not been built, so there is nothing to generate a "
-             "sentence with. This panel will show a real caption once that work lands."),
+    "body": ("The model that writes the sentence is still being built, so RetineX has nothing to "
+             "write with yet and will not invent one. A real description appears here, in this "
+             "panel, as soon as it can produce it."),
 }
 NARRATION_STATE = {
     "implemented": False,
     "stage": 9,
     "heading": "Narration is not connected",
-    "body": ("Narration needs a caption first, and no text-to-speech is wired up. The controls "
-             "below are present so the layout is honest about what will appear, and they stay "
-             "disabled until both exist."),
+    "body": ("Speaking a description needs the description first. The controls below are shown so "
+             "the layout is honest about what will appear, and they stay genuinely disabled until "
+             "there is something to say."),
 }
 
 
@@ -76,19 +77,18 @@ def unexpected(e):
     return render_template("error.html", code=500, message=message), 500
 
 
+# Neither page renders a pipeline dashboard any more, so neither runs the four validators on
+# every request. They are still the only source of stage status, and /api/pipeline still reports
+# exactly what they say.
 @bp.get("/")
 def home():
-    stages = pipeline.stages()
-    return render_template("index.html", stages=stages, summary=pipeline.summary(stages))
+    return render_template("index.html")
 
 
 @bp.get("/workspace")
 def workspace():
-    stages = pipeline.stages()
     return render_template(
         "workspace.html",
-        stages=stages,
-        summary=pipeline.summary(stages),
         caption=CAPTION_STATE,
         narration=NARRATION_STATE,
         limits={"max_mb": uploads.MAX_BYTES // 1_048_576,

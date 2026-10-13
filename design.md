@@ -1,7 +1,7 @@
 ---
 version: alpha
 name: RetineX
-description: Design system for RetineX, an image-to-description accessibility tool built as an academic research project. Calm editorial product design, restrained sage and green palette, hyperlegible type.
+description: Design system for RetineX, a visual accessibility tool that turns an image into a written description. Calm editorial product design, restrained sage and green palette, hyperlegible type.
 colors:
   canvas: "#F3F2EC"
   surface: "#FFFFFF"
@@ -155,7 +155,7 @@ Canonical visual source of truth for all RetineX frontend work. If an implementa
 
 ## Overview
 
-**Product.** RetineX turns an image into a written description and, in a later stage, spoken narration. It is simultaneously an academic research project. Both audiences read the same interface: a person who needs the description, and an examiner who needs to see the method.
+**Product.** RetineX turns an image into a written description and, in a later stage, spoken narration, so that someone who cannot see an image can still know what is in it. The interface is written for that person. Where a capability is still being built, the interface says so plainly in product language and never implies that it works.
 
 **Direction.** Calm editorial product design with premium SaaS level polish: generous whitespace, strong typography, restrained green and sage color, subtle motion, and accessibility first interaction. Text is the primary material, hairline rules do the work that shadows would do elsewhere, and the layout reads as edited rather than assembled.
 
@@ -247,21 +247,21 @@ Radius is small and hierarchical, and it signals permanence: the more fixed a th
 
 - `none` `0px` for page sections, inverted bands, tables, and image frames.
 - `sm` `2px` for hairline chips and tags.
-- `md` `4px` for buttons, inputs, and panels. This is the default.
-- `lg` `8px` for modals and the image upload drop zone only.
+- `md` `4px` for inputs and panels. This is the default.
+- `lg` `8px` for buttons, modals, and the image upload drop zone. Buttons were raised from `md` to `lg` on 2026-10-13: at a 44px target height a 4px corner reads as unfinished, and 8px is the smallest radius that reads as deliberate. It is two steps below `full`, so a button is still visibly not a pill.
 - `full` is reserved for a status dot and a user avatar. Nothing else is ever a pill.
 
 Borders are 1px of `neutral`, or 2px of `secondary` when a rule needs real emphasis. A border is the default way to bound a thing; a fill is the exception.
 
 ## Components
 
-**Buttons.** Four kinds and no more. `button-primary` is Hunter Green with white text and is used once per view for the single most important action. `button-secondary` is canvas with a 1px `neutral` border and Hunter Green text. `button-subtle` is a Dust Grey fill with Pine Teal text, for low stakes repeated actions. A text only button is permitted for destructive confirmation, in `error`. All use `md` radius, 12px by 20px padding, and the `button` type token. Hover darkens the fill one step and never moves the button. Active darkens again and may shift 1px down. Focus shows a 2px Fern ring at 2px offset, always visible, never removed. Disabled uses the Dust Grey fill at full opacity with `on-surface-muted` text and `cursor: not-allowed`; do not communicate disabled state with opacity alone. No gradients on any button.
+**Buttons.** Four kinds and no more. `button-primary` is Hunter Green with white text and is used once per view for the single most important action. `button-secondary` is canvas with a 1px `neutral` border and Hunter Green text. `button-subtle` is a Dust Grey fill with Pine Teal text, for low stakes repeated actions. A text only button is permitted for destructive confirmation, in `error`. All use `lg` radius, 12px by 20px padding, and the `button` type token. Hover darkens the fill one step and never moves the button. Active darkens again and may shift 1px down. Focus shows a 2px Fern ring at 2px offset, always visible, never removed. Disabled uses the Dust Grey fill at full opacity with `on-surface-muted` text and `cursor: not-allowed`; do not communicate disabled state with opacity alone. No gradients on any button.
 
 **Inputs and forms.** White fill, 1px `neutral` border, `md` radius, 12px padding, `body-md` text. The border darkens to `primary` on focus and the Fern focus ring appears alongside it. Labels sit above the field in the `label` token and are always present; placeholder text is never a substitute for a label. Errors show `error` text below the field plus an `error` border, and state the fix rather than the failure. Required fields are marked in the label text, not with a bare asterisk. Every input has a programmatically associated `<label>`.
 
 **Cards and surfaces.** A card has to earn itself. Use one only when several items are genuinely parallel and need visual separation, such as the three team members. Prose, a hero, a single statistic, or a form is not a card. When a card exists it is white on canvas, `md` radius, `lg` padding, 1px `neutral` border, no shadow. Never nest a card inside a card. The default answer to any layout question is open space with a hairline rule, not another container.
 
-**Navigation.** A single horizontal bar, canvas background, one hairline `neutral` rule beneath it, no shadow, no blur, no shrinking on scroll. The logo lockup sits left, links sit right in `body-md`. The current page is marked with a 2px Fern underline, not a filled pill. One `button-primary` is permitted in the bar for the main entry action. Below 1024px the links collapse into a disclosure button that opens a full height panel; the trigger carries `aria-expanded` and focus is trapped while it is open. The footer repeats the navigation plus Privacy Policy and Terms, in `caption`.
+**Navigation.** A single horizontal bar, canvas background, one hairline `neutral` rule beneath it, no shadow, no blur, no shrinking on scroll. The logo lockup sits left, links sit right in `body-md`. The current page is marked with a 2px Fern underline, not a filled pill. There is exactly one underline in the bar and it is shared: it glides horizontally to whichever link is hovered or focused, and returns to the current page when the pointer and focus leave. It is a progressive enhancement, so without JavaScript the current page keeps a plain static underline and no second marker is ever drawn. One `button-primary` is permitted in the bar for the main entry action. Below 1024px the links collapse into a disclosure button that opens a full height panel; the trigger carries `aria-expanded` and focus is trapped while it is open. The footer repeats the navigation plus Privacy Policy and Terms, in `caption`.
 
 ## Do's and Don'ts
 
@@ -277,9 +277,13 @@ These are hard rules. A pull request that breaks one is wrong even if it looks g
 
 Motion is quiet and explains something. If it does not aid comprehension, remove it.
 
-**Permitted:** opacity fades; fade up with a maximum 12px translate on first reveal of a section, once, not on every scroll; color and border transitions on hover and focus; a height transition on a disclosure; a restrained page transition of 200ms at most.
+**Permitted:** opacity fades; fade up with a maximum 12px translate on first reveal of a section, once, not on every scroll; color and border transitions on hover and focus; a height transition on a disclosure; a restrained page transition; a transform transition on the single shared navigation underline as it glides between links.
+
+**The hero entrance** is the one place a stagger is used: the eyebrow, the headline, and the supporting copy with its action row fade up in that order, three items at 70ms apart, each a 320ms fade up of 10px. It reuses the page transition's own keyframe rather than defining a second one, so the hero and the page rise by the same amount. It is a plain CSS animation on load, so it needs no script and can never leave content hidden; it stands down while a page transition is running, because the transition is already that page's entrance. A section reveal below the fold is the same 320ms fade up of 12px, triggered once by an IntersectionObserver, and the content is fully visible if that observer never runs.
 
 **Timing.** 120ms for hover and focus, 200ms for a disclosure or a panel, 320ms for a section reveal. Easing is `cubic-bezier(0.22, 0.61, 0.36, 1)`, which is a plain ease out. Nothing exceeds 400ms.
+
+**Page transitions.** Moving between two pages is one crossfade: the outgoing page fades out over 120ms while the incoming page fades in over 260ms and rises 10px, so the whole exchange is 260ms. The earlier cap of 200ms was raised to 260ms on 2026-10-13, because a crossfade carrying a translate reads as a snap below roughly 240ms and the extra 60ms is what makes it read as deliberate instead. It is still well inside the 400ms ceiling. The header and the navigation underline are excluded from that movement and carry their own names, so the bar stays put and the underline glides from the old page's link to the new one instead of the whole chrome lifting. This is implemented with the browser's cross-document View Transitions API through a single `@view-transition` rule, so no script touches a link and a browser without the API simply navigates.
 
 **Forbidden:** bounce, spring physics, scale above 1.02, parallax, staggered cascades of more than three items, animated gradients, flashy loaders, and anything that animates on every element in a list. Never animate the logo.
 
@@ -312,11 +316,17 @@ The only images in the product are real: the supplied brand assets, real photogr
 
 The supplied files are the source of truth and are never recreated, redrawn, recolored, or regenerated.
 
-- **Logo:** `retinex-logo.png` in the repository root, a PNG of 2039 by 771, an open eye mark plus the wordmark, with the tagline "Turning Vision Into Voice". It should be renamed to `app/static/brand/retinex-logo.png` when the frontend is set up, and an SVG version requested from whoever produced it, since a PNG wordmark will not stay crisp.
-- **Favicon:** `favicon.png` in the repository root, a PNG of 1774 by 887, the eye mark alone in blue. It is not square, so it is not yet a usable favicon; a square export with transparent padding is needed.
+- **Logo:** `app/static/brand/retinex-logo.png`, a transparent PNG of 813 by 307, an open eye mark plus the wordmark, with the tagline "Turning Vision Into Voice". The wordmark is black, the eye mark and the accent letterforms are `#365043`. As exported it carries 34px of fully transparent padding on its left edge, which at render size pushed the visible wordmark about 7px to the right of the content column and left the navigation looking misaligned against the page below it. `scripts/build_favicon.py` therefore also crops it to its own alpha bounds and writes `app/static/brand/retinex-logo-flush.png`, 732 by 159, which is what the navigation renders at 170px wide. Only fully transparent pixels are removed; no visible pixel, proportion or colour changes, and the supplied file is never written to. An SVG version is still worth requesting from whoever produced it, since a PNG wordmark will not stay crisp at larger sizes.
+- **Favicon:** supplied as `app/static/brand/favicon-source.png`, a transparent PNG of 1414 by 706, the eye mark alone in cream `#E9E5D9`. It is not square, so it is not usable as a favicon directly. `scripts/build_favicon.py` crops it to its own alpha bounds and centres it on a 512 by 512 transparent canvas, producing two served variants:
+  - `favicon.png`, refilled with Pine Green `#324A3D`, for light browser chrome. It is also the fallback for browsers that ignore `media` on a link element, and the Apple touch icon, because touch icons are composited on light backgrounds.
+  - `favicon-dark.png`, the cream master's own colour, for dark browser chrome.
+
+  Two variants exist because a favicon sits in browser chrome rather than on the page, and no single value is visible on both. Measured: cream on Chrome's light tab bar `#DEE1E6` is 1.04:1, which is invisible; Pine Green on the same surface is 7.34:1. On a dark tab bar `#35363A` cream reaches 9.58:1 and Pine Green drops to 1.25:1, which is why the pair is needed rather than one value. This is browser chrome only and does not give the site a dark theme. The green variant changes the fill colour and nothing else: every alpha value, and therefore the shape and its antialiasing, comes unchanged from the master, which is never written to.
 - **Clear space** around the logo is at least the height of the eye mark on all sides. Minimum width is 160px. Do not stretch, rotate, add effects to, or place the logo on a busy background.
 
-**Supplied brand assets retain their original colors. The RetineX interface itself uses the locked sage and green palette.** This is settled, not a compromise. The electric blue `#0039FD` in the logo and favicon stays exactly as supplied. It is deliberately not a design token, and it is never used for text, buttons, links, borders, backgrounds, or any UI state. Everything around the logo stays in the palette above. Do not recolor or redesign the supplied assets to match the palette.
+**The brand assets were re-supplied in the project's own greens on 2026-10-12, replacing the earlier electric blue `#0039FD` artwork.** The blue is no longer present in either asset and is no longer part of the brand. The replacements are transparent, so both sit flush on any surface.
+
+The asset colours are close to the palette but are not the same tokens, and they are not interchangeable with it: the logo's mark is `#365043`, the favicon's green variant is `#324A3D`, while `on-surface` is `#344E41`. Do not substitute a token for an asset colour or an asset colour for a token. Supplied artwork is still never redrawn or regenerated; the only permitted derivations are the crop, pad, resize and single-colour refill performed by `scripts/build_favicon.py`, which writes its own output files and never overwrites a supplied master.
 
 ## Content & Copy
 
@@ -349,11 +359,11 @@ Approved by the project owner. Do not reopen these without an explicit instructi
 - **Logo blue** stays inside the supplied assets and never enters the UI palette.
 - **Derived colors** `canvas` `#F3F2EC` and `on-surface-muted` `#5A6B55` are approved supporting UI colors.
 - **Typography** is Avegas Royale for display and Atkinson Hyperlegible Next for body and UI.
-- **No dark mode** at this stage. The primary experience is light.
+- **No dark mode** at this stage. The primary experience is light. The favicon's `prefers-color-scheme` variants are browser chrome, not a site theme, and do not reopen this.
 
 ## Outstanding Assets
 
 Not decisions, just files that are still needed. Neither blocks wireframing.
 
 1. **Avegas Royale font files and license.** Not in the repository. License terms are NOT VERIFIED. Both are needed before any public deployment. Until then, display type falls back as described in Typography.
-2. **A square favicon export.** The supplied `favicon.png` is 1774 by 887, so it is not yet usable as a favicon. An SVG version of the logo would also help, since a PNG wordmark will not stay crisp.
+2. **An SVG version of the logo.** A PNG wordmark will not stay crisp above its natural 813px width. The square favicon export that used to be listed here is done: `scripts/build_favicon.py` generates both variants from the supplied master.

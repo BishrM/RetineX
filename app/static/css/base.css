@@ -96,15 +96,66 @@ a:hover { color: var(--color-on-surface); }
   overflow: hidden; clip-path: inset(50%); white-space: nowrap;
 }
 
+/* --- page transitions ------------------------------------------------------ */
+/* design.md Motion, Page transitions. This single rule turns every same-origin navigation into a
+ * cross-document view transition. It is pure CSS on purpose: no script intercepts a click, so
+ * opening a link in a new tab, a modifier click, a download, an external link, a fragment, Back,
+ * Forward and scroll restoration all keep their native behaviour, and a browser without the API
+ * simply navigates as it always did. */
+@view-transition { navigation: auto; }
+
+@keyframes page-out { to { opacity: 0; } }
+@keyframes page-in { from { opacity: 0; transform: translateY(10px); } }
+
+::view-transition-old(root) { animation: page-out var(--dur-page-out) var(--ease) both; }
+::view-transition-new(root) { animation: page-in var(--dur-page-in) var(--ease) both; }
+
+/* The bar is lifted out of the page snapshot so it does not travel with the content, which is
+   what would make it jump. Naming the underline separately lets it glide from the old page's
+   link to the new one while everything else crossfades. */
+.site-header { view-transition-name: site-header; }
+.nav-indicator { view-transition-name: nav-indicator; }
+
 /* --- motion ---------------------------------------------------------------- */
+/* design.md Motion: a 320ms fade up of 12px, once per element, never replayed on scroll.
+ *
+ * The hiding is scoped to .js, which app/static/js/ui.js adds to <html> before the body paints.
+ * Without that class nothing is ever hidden, so if the script is blocked, fails to parse or
+ * throws, every reveal is simply visible in its final state. That is the whole fallback. */
+.js .reveal {
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity var(--dur-reveal) var(--ease), transform var(--dur-reveal) var(--ease);
+  will-change: opacity, transform;
+}
+.js .reveal.is-in { opacity: 1; transform: none; will-change: auto; }
+
+/* The hero entrance is the one permitted stagger, and it is a plain CSS animation rather than a
+   scripted reveal: an animation cannot leave content hidden if a script never runs, and `backwards`
+   only hides an element for its own short duration. */
+.hero-copy > * { animation: page-in var(--dur-reveal) var(--ease) backwards; }
+.hero-copy > *:nth-child(2) { animation-delay: 70ms; }
+.hero-copy > *:nth-child(3) { animation-delay: 140ms; }
+/* While a page transition is running it is already that page's entrance, so the stagger stands
+   down rather than playing a second fade up inside the first one. */
+:root:active-view-transition .hero-copy > * { animation: none; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+    animation-delay: 0s !important;
     transition-duration: 80ms !important;
+    transition-delay: 0s !important;
     scroll-behavior: auto !important;
   }
-  .reveal { opacity: 1 !important; transform: none !important; }
+  /* final state, immediately: no translate, no stagger, nothing to wait for */
+  .js .reveal, .reveal { opacity: 1 !important; transform: none !important; }
+  .hero-accent { transform: none !important; }
+  /* the navigation still happens, it just arrives rather than moving */
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) {
+    animation: none !important;
+  }
 }
 
 /* --- responsive type: design.md scales down ~20% below 640px --------------- */

@@ -9,14 +9,34 @@
 .site-header .shell { display: flex; align-items: center; justify-content: space-between;
   gap: var(--space-lg); padding-block: var(--space-md); }
 .brand { display: inline-flex; align-items: center; gap: var(--space-sm); }
-/* design.md: minimum logo width 160px, clear space >= eye-mark height, never animated */
+/* design.md: minimum logo width 160px, clear space >= eye-mark height, never animated.
+ * This is the flush-cropped export, so 170px is 170px of visible wordmark and its left edge
+ * lands on the shell's padding edge, which is the same edge the page content below starts on.
+ * No offset is applied here; the alignment comes from the asset. */
 .brand img { width: 170px; height: auto; }
+
+.site-header nav { position: relative; }
 .nav-links { display: flex; align-items: center; gap: var(--space-lg); }
-.nav-links a { text-decoration: none; }
+.nav-links a { text-decoration: none; padding-bottom: var(--space-xs);
+  transition: color var(--dur-hover) var(--ease); }
+/* The static underline, and the only one when JavaScript is unavailable. */
 .nav-links a[aria-current="page"] {
   border-bottom: 2px solid var(--color-accent);
-  padding-bottom: 2px;
   color: var(--color-on-surface);
+}
+/* With JavaScript the shared indicator is the underline, so the static one is stood down and
+   the two can never both be drawn. The border is kept, transparent, so nothing shifts. */
+.js .nav-links a[aria-current="page"] { border-bottom-color: transparent; }
+.nav-indicator {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: var(--ind-w, 0px);
+  background-color: var(--color-accent);
+  transform: translateX(var(--ind-x, 0px));
+  transition: transform var(--dur-disclosure) var(--ease), width var(--dur-disclosure) var(--ease);
+  pointer-events: none;
 }
 .site-footer {
   border-top: 1px solid var(--color-neutral);
@@ -30,9 +50,13 @@
   min-height: 44px; padding: 12px 20px;
   font-size: var(--type-button-size); font-weight: var(--type-button-weight);
   line-height: var(--type-button-line-height); letter-spacing: var(--type-button-letter-spacing);
-  border: 1px solid transparent; border-radius: var(--radius-md);
+  /* design.md Shapes: buttons use lg, raised from md on 2026-10-13. Two steps below full,
+     so a button is softly rounded and still visibly not a pill. */
+  border: 1px solid transparent; border-radius: var(--radius-lg);
   text-decoration: none; cursor: pointer;
-  transition: background-color var(--dur-hover) var(--ease), border-color var(--dur-hover) var(--ease);
+  transition: background-color var(--dur-hover) var(--ease),
+              border-color var(--dur-hover) var(--ease),
+              color var(--dur-hover) var(--ease);
 }
 .btn-primary { background-color: var(--color-primary); color: var(--color-surface); }
 .btn-primary:hover { background-color: var(--color-on-surface); color: var(--color-surface); }
@@ -42,8 +66,12 @@
   border-color: var(--color-neutral);
 }
 .btn-secondary:hover { border-color: var(--color-primary); color: var(--color-on-surface); }
+.btn-secondary:active { border-color: var(--color-primary); transform: translateY(1px); }
 .btn-subtle { background-color: var(--color-neutral); color: var(--color-on-surface); }
 .btn-subtle:hover { background-color: var(--color-secondary); }
+.btn-subtle:active { background-color: var(--color-secondary); transform: translateY(1px); }
+/* the ring is the focus signal on every variant; design.md never lets it be removed or replaced */
+.btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 /* design.md: disabled uses a full-opacity Dust Grey fill, never opacity alone */
 .btn:disabled, .btn[aria-disabled="true"] {
   background-color: var(--color-neutral);
@@ -51,6 +79,12 @@
   border-color: transparent;
   cursor: not-allowed;
   transform: none;
+}
+/* a disabled button does not respond to a pointer at all, including on the variants above */
+.btn:disabled:hover, .btn[aria-disabled="true"]:hover {
+  background-color: var(--color-neutral);
+  color: var(--color-on-surface-muted);
+  border-color: transparent;
 }
 
 /* --- panels and hairlines -------------------------------------------------- */
@@ -123,22 +157,6 @@
   .progress::after { animation: none; width: 100%; }
 }
 
-/* --- pipeline -------------------------------------------------------------- */
-.pipeline { display: grid; gap: 0; }
-.pipeline-stage {
-  display: grid; grid-template-columns: 2.5rem minmax(0, 1fr) auto;
-  gap: var(--space-md); align-items: center;
-  padding-block: var(--space-md);
-  border-top: 1px solid var(--color-neutral);
-}
-.pipeline-stage:last-child { border-bottom: 1px solid var(--color-neutral); }
-.pipeline-index {
-  font-variant-numeric: tabular-nums; font-weight: 700;
-  color: var(--color-on-surface-muted);
-}
-.pipeline-stage.is-done .pipeline-index { color: var(--color-primary); }
-.pipeline-detail { color: var(--color-on-surface-muted); font-size: var(--type-caption-size); }
-
 /* --- feature readout ------------------------------------------------------- */
 .readout { width: 100%; border-collapse: collapse; }
 .readout caption { text-align: left; color: var(--color-on-surface-muted);
@@ -158,25 +176,40 @@
 .hero { padding-block: var(--space-3xl) var(--space-2xl); }
 .hero .display-xl { max-width: 20ch; }
 .eyebrow { color: var(--color-on-surface-muted); margin-bottom: var(--space-md); }
-.facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0;
-  border-top: 1px solid var(--color-neutral); }
-.fact { padding: var(--space-lg) var(--space-md) var(--space-lg) 0; }
-.fact-value { font-family: var(--font-display); font-size: var(--type-h2-size);
-  line-height: 1.1; font-variant-numeric: tabular-nums; }
-.fact-label { color: var(--color-on-surface-muted); font-size: var(--type-caption-size); }
-.section-inverse .fact-value { color: var(--color-neutral); }
-.section-inverse .fact-label { color: var(--color-secondary); }
-.section-inverse .facts { border-top-color: var(--color-secondary); }
 .section-inverse .label { color: var(--color-secondary); }
 .section-inverse .prose { color: var(--color-neutral); }
-.pad-top-xl { padding-top: var(--space-xl); }
 .section-inverse a { color: var(--color-neutral); }
-.step { padding-block: var(--space-lg); border-top: 1px solid var(--color-neutral); }
+
+/* The hero copy sits in the shell, so its left edge is the shell padding edge: the same edge the
+   logo's visible left edge lands on in the bar above. Nothing is nudged to meet it. */
+.hero-copy { max-width: 46rem; }
+/* a 2px Fern rule that wipes out from the left under the eyebrow: it separates the label from the
+   headline, which is the only reason it is there */
+.hero-accent {
+  display: block; height: 2px; width: var(--space-2xl);
+  background-color: var(--color-accent);
+  transform-origin: left center;
+  animation: wipe var(--dur-reveal) var(--ease) 70ms backwards;
+}
+@keyframes wipe { from { transform: scaleX(0); } }
+:root:active-view-transition .hero-accent { animation: none; }
+
+/* steps: three parallel items separated by hairlines, not three cards */
+.steps { display: grid; gap: 0; }
+.step {
+  display: grid; grid-template-columns: 3.5rem minmax(0, 1fr); gap: var(--space-lg);
+  padding-block: var(--space-xl); border-top: 1px solid var(--color-neutral);
+}
+.step:last-child { border-bottom: 1px solid var(--color-neutral); }
 .step-number { font-family: var(--font-display); font-size: var(--type-h2-size);
-  color: var(--color-secondary); line-height: 1; font-variant-numeric: tabular-nums; }
-@media (max-width: 1023px) { .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  color: var(--color-secondary); line-height: 1.1; font-variant-numeric: tabular-nums; }
+.step-head { display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--space-md); flex-wrap: wrap; }
+
+.cta { padding-top: var(--space-md); }
+
 @media (max-width: 639px) {
-  .facts { grid-template-columns: minmax(0, 1fr); }
-  .fact { padding-block: var(--space-md); border-top: 1px solid var(--color-neutral); }
   .hero { padding-block: var(--space-xl); }
+  .step { grid-template-columns: minmax(0, 1fr); gap: var(--space-sm);
+    padding-block: var(--space-lg); }
 }

@@ -78,6 +78,8 @@ def render(fm):
     lines.append("  --dur-hover: 120ms;")
     lines.append("  --dur-disclosure: 200ms;")
     lines.append("  --dur-reveal: 320ms;")
+    lines.append("  --dur-page-out: 120ms;")
+    lines.append("  --dur-page-in: 260ms;")
     lines.append("\n  /* the single permitted shadow, tinted with Pine Teal */")
     lines.append("  --shadow-overlay: 0 2px 8px rgba(52, 78, 65, 0.10);")
     lines.append("}")

@@ -1,161 +1,118 @@
 {% extends "base.html" %}
-{% from "macros.html" import pipeline_list %}
-{% block title %}RetineX | Image captioning with Fisher Score feature selection{% endblock %}
-{% block description %}RetineX is an academic research project testing whether Fisher Score feature selection improves image caption generation, with narration for visual accessibility.{% endblock %}
+{% from "macros.html" import status_chip %}
+{% block title %}RetineX | Turning vision into voice{% endblock %}
+{% block description %}RetineX turns a photograph into a written description, so that someone who cannot see the image can still know what is in it.{% endblock %}
 
 {% block main %}
 <!-- ------------------------------------------------------------------- hero -->
-<section class="shell hero stack-lg">
-  <div class="stack">
-    <p class="label eyebrow">Academic major project</p>
-    <h1 class="display-xl">Does selecting fewer features write a better description?</h1>
-    <p class="body-lg prose">
-      RetineX describes an image in words, then speaks the description aloud, so that someone who
-      cannot see the image can still know what is in it. It is also an experiment: it builds the same
-      caption model twice, once on all 4096 features from a convolutional network and once on the 512
-      the Fisher Score ranks highest, and compares them on the same data.
-    </p>
-    <div class="row">
-      <a class="btn btn-primary" href="{{ url_for('main.workspace') }}">Open the Workspace</a>
-      <a class="btn btn-secondary" href="#method">Read the method</a>
-    </div>
-    <p class="caption muted">
-      {{ summary.complete }} of {{ summary.total }} pipeline stages are built.
-      The caption model is not one of them yet, and the Workspace says so where a caption would go.
-    </p>
-  </div>
-</section>
-
-<!-- --------------------------------------------------------------- the point -->
-<section class="shell section-tight grid cols-2">
-  <div class="stack">
-    <h2>Why a description is the product</h2>
-    <p class="prose">
-      An image without a description is a blank to anyone using a screen reader. Alt text solves this
-      when someone writes it, and most images have none. A model that writes a usable sentence about
-      an arbitrary photograph closes part of that gap.
-    </p>
-  </div>
-  <div class="stack">
-    <h2>Why fewer features might help</h2>
-    <p class="prose">
-      A VGG16 network describes an image with 4096 numbers, and most of them say nothing useful about
-      what the picture is of. The Fisher Score ranks each one by how well it separates images that
-      people described with similar words. Keeping the strongest 512 makes a smaller, faster model.
-      Whether it makes a <em>better</em> one is the question this project exists to answer, and it is
-      not answered yet.
-    </p>
-  </div>
-</section>
-
-<!-- ------------------------------------------------------- measured so far -->
-<section class="section-inverse">
-  <div class="shell stack-lg">
+{# The three children of .hero-copy fade up in order on load, staggered in the stylesheet by a
+   plain CSS animation. Nothing here is tied to scroll, the logo in the bar is not part of it, and
+   it stands down while a page transition is already playing. #}
+<section class="shell hero">
+  <div class="hero-copy stack-lg">
     <div class="stack">
-      <p class="label">Measured in this repository</p>
-      <h2>What exists right now</h2>
-      <p class="prose">
-        Every number here was produced by running this project's own code and is recorded with its
-        configuration and checksums. Nothing on this page is estimated.
+      <p class="label eyebrow">Visual accessibility</p>
+      <span class="hero-accent" aria-hidden="true"></span>
+    </div>
+    <h1 class="display-xl">An image that nobody described is a blank.</h1>
+    <div class="stack-lg">
+      <p class="body-lg prose">
+        RetineX reads a photograph and writes what is in it, then reads that description aloud. One
+        upload, one sentence, one voice, for anyone who cannot see the picture in front of them.
+      </p>
+      <div class="row">
+        <a class="btn btn-primary" href="{{ url_for('main.workspace') }}">Open the Workspace</a>
+        <a class="btn btn-secondary" href="#how">See how it works</a>
+      </div>
+      <p class="caption muted">
+        Caption generation and narration are still being built. The Workspace runs the part that is
+        finished on an image you choose, and says plainly where the rest will appear.
       </p>
     </div>
-    <div class="facts">
-      <div class="fact">
-        <p class="fact-value tabular">8,091</p>
-        <p class="fact-label">Flickr8K images validated, 40,455 captions</p>
-      </div>
-      <div class="fact">
-        <p class="fact-value tabular">6000 / 1000 / 1000</p>
-        <p class="fact-label">Frozen image-level split, seed 42</p>
-      </div>
-      <div class="fact">
-        <p class="fact-value tabular">4096 &rarr; 512</p>
-        <p class="fact-label">Features after Fisher Score selection</p>
-      </div>
-      <div class="fact">
-        <p class="fact-value">Not yet evaluated</p>
-        <p class="fact-label">BLEU-1 to BLEU-4, both models</p>
-      </div>
-    </div>
   </div>
 </section>
 
-<!-- ----------------------------------------------------------------- method -->
-<section class="shell section stack-lg" id="method">
-  <div class="stack">
-    <h2>The method, stage by stage</h2>
-    <p class="prose muted">
-      The first four stages run from the command line today and their artifacts are checksummed.
-      The status beside each stage is read from those artifacts when this page loads, so it cannot
-      drift from what has actually been built.
-    </p>
-  </div>
-  {{ pipeline_list(stages) }}
-</section>
-
-<!-- ------------------------------------------------------------- experiment -->
-<section class="shell section-tight stack-lg">
-  <div class="stack">
-    <h2>How the comparison will be judged</h2>
-    <p class="prose muted">
-      Both models get the same frozen split, the same vocabulary, the same hyperparameters and the
-      same seeds. Only the image features differ. That is the whole point: if the captions differ,
-      the features are why.
-    </p>
-  </div>
-  <div class="grid cols-3">
-    <div class="panel stack">
-      <h3>Baseline</h3>
-      <p class="caption muted">4096-d VGG16 fc2 features with an LSTM decoder.</p>
-      <p class="caption"><strong>Not implemented</strong></p>
-    </div>
-    <div class="panel stack">
-      <h3>RetineX</h3>
-      <p class="caption muted">512 Fisher-selected features with the same LSTM decoder.</p>
-      <p class="caption"><strong>Not implemented</strong></p>
-    </div>
-    <div class="panel stack">
-      <h3>Metric</h3>
-      <p class="caption muted">Unsmoothed corpus BLEU-1 to BLEU-4 against all five references per
-        image, on the held-out test split.</p>
-      <p class="caption"><strong>Not yet evaluated</strong></p>
-    </div>
-  </div>
-  <p class="caption muted">
-    A negative result is a result. If selecting 512 features does not beat the full 4096, this
-    project will report that.
-  </p>
-</section>
-
-<!-- ------------------------------------------------------------------- data -->
+<!-- ------------------------------------------------------------- the problem -->
 <section class="shell section-tight grid cols-2">
-  <div class="stack">
-    <h2>About the data</h2>
+  <div class="stack reveal">
+    <h2>Most images say nothing</h2>
     <p class="prose">
-      RetineX uses Flickr8K, 8,091 photographs with five written descriptions each. The copy used
-      here came from a third-party redistribution rather than the original university release, whose
-      download link no longer works. It is very likely the original corpus, repackaged, and this
-      project describes it that way rather than calling it official.
+      To a screen reader, an image without a description is a gap in the page. Alt text fixes that
+      only when a person sits down and writes it, and most images never get that person. RetineX is
+      built to write it instead, for any photograph, on demand.
     </p>
   </div>
-  <div class="stack">
-    <h2>About the output</h2>
+  <div class="stack reveal">
+    <h2>A description you can hear</h2>
     <p class="prose">
-      The Workspace runs the stages that exist: it extracts real features from an image you upload
-      and applies the saved selection. It does not invent a caption to fill the space, and it does
-      not play audio it cannot produce. When those parts are built, the same panels will show real
-      output.
+      The written sentence is the product and the audio is a second channel, never a replacement.
+      Text stays on screen, selectable and readable, so the description works with the tools people
+      already rely on rather than around them.
     </p>
   </div>
+</section>
+
+<!-- ------------------------------------------------------------ how it works -->
+<section class="shell section stack-lg" id="how">
+  <div class="stack reveal">
+    <h2>How it works</h2>
+    <p class="prose muted">
+      Three steps, in plain terms. The first one runs today; you can watch it happen in the
+      Workspace on an image of your own.
+    </p>
+  </div>
+  <ol class="steps">
+    <li class="step reveal">
+      <p class="step-number tabular" aria-hidden="true">01</p>
+      <div class="stack">
+        <div class="step-head">
+          <h3>Look at the image</h3>
+          {{ status_chip('complete', 'Working') }}
+        </div>
+        <p class="prose">
+          A convolutional network reads the picture and turns it into a long list of numbers. Most
+          of those numbers say nothing useful, so RetineX keeps only the few hundred that best
+          separate pictures people described in similar words, which makes the next step smaller
+          and faster.
+        </p>
+      </div>
+    </li>
+    <li class="step reveal">
+      <p class="step-number tabular" aria-hidden="true">02</p>
+      <div class="stack">
+        <div class="step-head">
+          <h3>Write the description</h3>
+          {{ status_chip('not_implemented', 'In development') }}
+        </div>
+        <p class="prose">
+          A language model turns that shortlist into one readable sentence about what is in the
+          picture. This is the part still being built, so RetineX does not show a sentence yet
+          rather than showing one it did not produce.
+        </p>
+      </div>
+    </li>
+    <li class="step reveal">
+      <p class="step-number tabular" aria-hidden="true">03</p>
+      <div class="stack">
+        <div class="step-head">
+          <h3>Say it out loud</h3>
+          {{ status_chip('not_implemented', 'In development') }}
+        </div>
+        <p class="prose">
+          The finished description is spoken, with play, pause and stop under your control and the
+          full text always on screen beside it. Nothing ever plays on its own.
+        </p>
+      </div>
+    </li>
+  </ol>
 </section>
 
 <!-- -------------------------------------------------------------------- cta -->
 <section class="shell section-tight">
-  <hr class="rule-strong">
-  <div class="stack-lg pad-top-xl">
+  <div class="cta stack-lg reveal">
     <h2>Try it on one image</h2>
-    <p class="prose muted">Upload a photograph and watch the implemented half of the pipeline run on
-      it. Your image is processed for that request and is not stored.</p>
+    <p class="prose muted">Upload a photograph and watch RetineX read it. Your image is processed
+      for that one request and is never stored.</p>
     <p><a class="btn btn-primary" href="{{ url_for('main.workspace') }}">Open the Workspace</a></p>
   </div>
 </section>

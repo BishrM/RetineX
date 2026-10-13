@@ -77,19 +77,149 @@ def test_workspace_narration_controls_are_really_disabled(client):
     assert "Transcript" in html                         # transcript is always present
 
 
-def test_no_favicon_is_shipped_until_a_square_asset_exists(client):
+@pytest.mark.parametrize("name", ["favicon.png", "favicon-dark.png"])
+def test_favicon_variants_are_square_and_transparent(client, name):
+    icon = ROOT / "app" / "static" / "brand" / name
+    assert icon.is_file()
+    im = Image.open(icon)
+    assert im.size == (512, 512), f"{name} is {im.size}, must be 512x512"
+    assert im.mode == "RGBA" and im.getchannel("A").getextrema()[0] == 0, "needs transparency"
+    assert client.get(f"/static/brand/{name}").status_code == 200
+
+
+@pytest.mark.parametrize("path", ["/", "/workspace"])
+def test_both_favicon_variants_are_linked_with_the_right_media(client, path):
+    html = client.get(path).get_data(as_text=True)
+    # the fallback has no media query, so browsers ignoring `media` still get a visible icon
+    assert 'href="/static/brand/favicon.png"' in html
+    assert 'media="(prefers-color-scheme: dark)"' in html
+    assert 'href="/static/brand/favicon-dark.png"' in html
+    dark_link = html[html.index('media="(prefers-color-scheme: dark)"'):]
+    assert "favicon-dark.png" in dark_link[:200], "the dark media query must point at the cream mark"
+    # the Apple touch icon is composited on light backgrounds, so it must be the green one
+    apple = html[html.index('rel="apple-touch-icon"'):]
+    assert "favicon.png" in apple[:200] and "favicon-dark" not in apple[:200]
+
+
+def test_the_page_itself_has_no_dark_theme(client):
+    """The favicon media query is browser chrome only; the site stays light-only per design.md."""
+    for path in (ROOT / "app" / "static" / "css").glob("*.css"):
+        assert not re.search(r"@media[^{]*prefers-color-scheme", path.read_text()), path.name
     html = client.get("/workspace").get_data(as_text=True)
-    assert 'rel="icon"' not in html
-    assert not (ROOT / "app" / "static" / "favicon.png").exists()
+    # the only occurrence in the markup is on a link element, not a style or a theme toggle
+    for idx in [i for i in range(len(html)) if html.startswith("prefers-color-scheme", i)]:
+        assert "<link" in html[max(0, idx - 200):idx]
+
+
+def test_favicon_is_generated_from_the_supplied_asset_not_hand_edited():
+    """The square export must still match what build_favicon.py produces from favicon.png."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("bf", ROOT / "scripts" / "build_favicon.py")
+    bf = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bf)
+    assert bf.main(["--check"]) == 0
+
+
+def test_logo_dimension_attributes_match_the_real_file(client):
+    """Wrong width/height reserve the wrong box and shift the layout when the image loads."""
+    import re
+
+    html = client.get("/workspace").get_data(as_text=True)
+    tag = re.search(r'<img[^>]*retinex-logo-flush\.png"[^>]*>', html).group(0)
+    w = int(re.search(r'width="(\d+)"', tag).group(1))
+    h = int(re.search(r'height="(\d+)"', tag).group(1))
+    real = Image.open(ROOT / "app" / "static" / "brand" / "retinex-logo-flush.png").size
+    assert (w, h) == real, f"markup says {(w, h)}, file is {real}"
+
+
+def test_logo_is_wide_enough_for_the_design_minimum():
+    """design.md Brand Assets: minimum width 160px. It is rendered at 170px."""
+    width = Image.open(ROOT / "app" / "static" / "brand" / "retinex-logo-flush.png").size[0]
+    assert width >= 170, "the logo file is narrower than its rendered size, so it will look soft"
+
+
+def test_the_rendered_logo_has_no_transparent_padding():
+    """Why the flush export exists.
+
+    The supplied master carries 34px of fully transparent padding on its left edge, which pushed
+    the visible wordmark right of the content column. The export the navigation renders must have
+    none, because that, and not a negative margin, is what makes the bar align with the page.
+    """
+    flush = Image.open(ROOT / "app" / "static" / "brand" / "retinex-logo-flush.png").convert("RGBA")
+    assert flush.getchannel("A").getbbox() == (0, 0, flush.width, flush.height)
+
+    master = Image.open(ROOT / "app" / "static" / "brand" / "retinex-logo.png").convert("RGBA")
+    assert master.getchannel("A").getbbox() != (0, 0, master.width, master.height), (
+        "the master no longer has padding to crop; has it been overwritten?")
+
+
+def test_the_flush_export_removed_only_transparent_pixels():
+    """Cropping must not touch a visible pixel, a proportion or a colour."""
+    master = Image.open(ROOT / "app" / "static" / "brand" / "retinex-logo.png").convert("RGBA")
+    flush = Image.open(ROOT / "app" / "static" / "brand" / "retinex-logo-flush.png").convert("RGBA")
+    box = master.getchannel("A").getbbox()
+    assert list(master.crop(box).get_flattened_data()) == list(flush.get_flattened_data())
+
+
+def test_dark_variant_keeps_the_supplied_cream_colour():
+    """favicon-dark.png is the master's own colour: cropped and padded, never recoloured."""
+    from collections import Counter
+
+    source = Image.open(ROOT / "app" / "static" / "brand" / "favicon-source.png").convert("RGBA")
+    out = Image.open(ROOT / "app" / "static" / "brand" / "favicon-dark.png")
+    src = Counter(p[:3] for p in source.get_flattened_data() if p[3] > 200).most_common(1)[0][0]
+    got = Counter(p[:3] for p in out.get_flattened_data() if p[3] > 200).most_common(1)[0][0]
+    # resampling shifts a channel by a point or two; a recolour would not be within tolerance
+    assert all(abs(a - b) <= 3 for a, b in zip(src, got)), (src, got)
+
+
+def test_light_variant_is_exactly_the_approved_pine_green():
+    from collections import Counter
+
+    out = Image.open(ROOT / "app" / "static" / "brand" / "favicon.png")
+    opaque = [p for p in out.get_flattened_data() if p[3] > 250]
+    got = Counter(p[:3] for p in opaque).most_common(1)[0][0]
+    assert got == (0x32, 0x4A, 0x3D), f"expected #324A3D, got #{got[0]:02X}{got[1]:02X}{got[2]:02X}"
+
+
+def test_recolouring_did_not_alter_the_artwork_shape():
+    """Only the colour channels differ between the variants; every alpha value is identical."""
+    light = Image.open(ROOT / "app" / "static" / "brand" / "favicon.png").getchannel("A")
+    dark = Image.open(ROOT / "app" / "static" / "brand" / "favicon-dark.png").getchannel("A")
+    assert list(light.get_flattened_data()) == list(dark.get_flattened_data())
+
+
+def test_light_variant_is_visible_on_light_browser_chrome():
+    """The reason two variants exist. Measured, not assumed."""
+    def contrast(fg, bg):
+        def lin(c):
+            c /= 255
+            return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+        def lum(c):
+            r, g, b = (lin(x) for x in c)
+            return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+        a, b = lum(fg), lum(bg)
+        return (max(a, b) + 0.05) / (min(a, b) + 0.05)
+
+    green, cream = (0x32, 0x4A, 0x3D), (0xE9, 0xE5, 0xD9)
+    light_chrome, dark_chrome = (0xDE, 0xE1, 0xE6), (0x35, 0x36, 0x3A)
+    assert contrast(green, light_chrome) > 3, "the light-chrome icon must be visible on light chrome"
+    assert contrast(cream, dark_chrome) > 3, "the dark-chrome icon must be visible on dark chrome"
+    # and the pairing is the right way round
+    assert contrast(green, light_chrome) > contrast(cream, light_chrome)
+    assert contrast(cream, dark_chrome) > contrast(green, dark_chrome)
 
 
 def test_logo_is_served_from_the_moved_brand_path(client):
     html = client.get("/workspace").get_data(as_text=True)
-    assert "/static/brand/retinex-logo.png" in html
-    assert (ROOT / "app" / "static" / "brand" / "retinex-logo.png").is_file()
+    assert "/static/brand/retinex-logo-flush.png" in html
+    for name in ("retinex-logo.png", "retinex-logo-flush.png"):
+        assert (ROOT / "app" / "static" / "brand" / name).is_file()
+        assert client.get(f"/static/brand/{name}").status_code == 200
     assert not (ROOT / "retinex-logo.png").exists()
-    r = client.get("/static/brand/retinex-logo.png")
-    assert r.status_code == 200
 
 
 # --- truthful states --------------------------------------------------------
@@ -98,7 +228,10 @@ def test_workspace_marks_caption_and_narration_not_implemented(client):
     html = client.get("/workspace").get_data(as_text=True)
     assert "Caption generation is not implemented" in html
     assert "Narration is not connected" in html
-    assert "Not implemented" in html
+    assert html.count("In development") == 2        # one chip on each of the two panels
+    # the panels are still driven by the single source of truth in routes.py
+    from app.routes import CAPTION_STATE, NARRATION_STATE
+    assert CAPTION_STATE["body"] in html and NARRATION_STATE["body"] in html
 
 
 @pytest.mark.parametrize("path", ["/", "/workspace"])
@@ -113,14 +246,46 @@ def test_no_fabricated_numbers_anywhere(client, path):
         assert "not implemented" in html
 
 
-def test_pipeline_stage_count_and_honest_split(client):
-    html = client.get("/workspace").get_data(as_text=True)
-    assert "Pipeline status" in html
+def test_pipeline_stage_count_and_honest_split():
     stages = pipeline.stages()
     assert len(stages) == 9
     assert [s["status"] for s in stages[4:]] == ["not_implemented"] * 5
-    for s in stages[4:]:
-        assert s["name"] in html
+
+
+@pytest.mark.parametrize("path", ["/", "/workspace"])
+def test_no_page_renders_the_pipeline_dashboard(client, path):
+    """The nine stage rows and their repeated badges are not interface content.
+
+    The stages are still computed and still served by /api/pipeline; what went away is the
+    repository status report on the page, not the inspection behind it.
+    """
+    html = client.get(path).get_data(as_text=True)
+    assert "Pipeline status" not in html
+    assert "pipeline-stage" not in html
+    for s in pipeline.stages():
+        assert s["detail"] not in html
+    for leaked in ("6000/1000/1000", "4096", "No module exists yet",
+                   "The Workspace cannot generate a caption yet",
+                   "No text-to-speech is connected", "Not yet evaluated"):
+        assert leaked not in html
+
+
+@pytest.mark.parametrize("path", ["/", "/workspace"])
+def test_no_page_positions_retinex_as_a_student_project(client, path):
+    html = client.get(path).get_data(as_text=True).lower()
+    for banned in ("academic", "major project", "college", "university project",
+                   "student", "examiner", "coursework"):
+        assert banned not in html
+
+
+def test_pages_render_without_running_the_validators(client, monkeypatch):
+    """Neither page needs stage status now, so neither should pay for four validators."""
+    def boom(*_a, **_k):
+        raise AssertionError("a page must not call pipeline.stages()")
+
+    monkeypatch.setattr(pipeline, "stages", boom)
+    assert client.get("/").status_code == 200
+    assert client.get("/workspace").status_code == 200
 
 
 def test_pipeline_is_derived_from_validators_not_hardcoded(tmp_path):
@@ -565,10 +730,11 @@ def test_home_has_a_clear_cta_to_the_workspace(client):
 
 
 def test_home_states_what_is_not_built(client):
+    """Positioning RetineX as a product must not turn the unbuilt half into a claim."""
     html = client.get("/").get_data(as_text=True)
-    assert "Not yet evaluated" in html
-    assert "Not implemented" in html
-    assert "negative result is a result" in html
+    assert "Caption generation and narration are still being built" in html
+    assert html.count("In development") == 2        # the describe step and the speak step
+    assert "does not show a sentence yet" in html
 
 
 def test_home_uses_at_most_one_inverted_band(client):
@@ -589,3 +755,209 @@ def test_reduced_motion_is_honoured():
     assert "prefers-reduced-motion: reduce" in base
     components = (ROOT / "app" / "static" / "css" / "components.css").read_text()
     assert "prefers-reduced-motion: reduce" in components
+
+
+# --- motion and navigation enhancement --------------------------------------
+
+def test_a_reveal_is_only_hidden_once_javascript_has_said_so():
+    """The fallback that keeps content readable when the script never runs.
+
+    Every rule that sets a reveal to zero opacity must be scoped to the .js class, which ui.js
+    adds to <html>. An unscoped rule would leave the page blank with JavaScript disabled.
+    """
+    css = (ROOT / "app" / "static" / "css" / "base.css").read_text()
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)       # a comment may mention .js innocently
+    # a keyframe may start at zero opacity; that hides nothing, because the animation ends
+    css = re.sub(r"@keyframes\s+[\w-]+\s*\{(?:[^{}]|\{[^{}]*\})*\}", "", css)
+    hiding = re.findall(r"([^{}]*)\{[^{}]*opacity:\s*0;", css)
+    assert hiding, "expected at least one reveal rule to check"
+    for selector in hiding:
+        assert ".js " in selector, f"{selector.strip()!r} hides content without the js gate"
+
+
+def test_the_reveal_script_loads_before_the_body_paints():
+    """Deferring it would let hidden content flash in and then disappear."""
+    base = (ROOT / "app" / "templates" / "base.html").read_text()
+    head, body = base.split("<body>", 1)
+    assert "js/ui.js" in head and "defer" not in head.split("js/ui.js")[1].split(">")[0]
+    assert "js/ui.js" not in body
+
+
+def test_reduced_motion_cancels_the_stagger_and_the_translate():
+    """design.md: under reduced motion elements appear in their final state, with no wait."""
+    css = (ROOT / "app" / "static" / "css" / "base.css").read_text()
+    block = css.split("@media (prefers-reduced-motion: reduce)", 1)[1]
+    assert "transition-delay: 0s !important" in block
+    assert "transform: none !important" in block
+    assert "opacity: 1 !important" in block
+
+
+# --- page transitions -------------------------------------------------------
+
+def base_css():
+    return (ROOT / "app" / "static" / "css" / "base.css").read_text()
+
+
+def test_navigation_is_transitioned_by_css_not_by_script():
+    """The whole approach: one at-rule, and no script anywhere near a link.
+
+    A scripted transition has to intercept clicks, and then it owns new tabs, modifier clicks,
+    downloads, Back, Forward and scroll restoration, and gets one of them wrong. This owns none
+    of them.
+    """
+    assert "@view-transition { navigation: auto; }" in base_css()
+
+    js = (ROOT / "app" / "static" / "js" / "ui.js").read_text()
+    for banned in ("preventDefault", '"click"', "startViewTransition",
+                   "history.pushState", "location.href", "fetch("):
+        assert banned not in js, f"ui.js must not {banned}"
+
+
+def test_the_transition_duration_is_the_documented_one():
+    """design.md Motion, Page transitions: 120ms out, 260ms in, so 260ms overall."""
+    css = base_css()
+    assert "::view-transition-old(root) { animation: page-out var(--dur-page-out)" in css
+    assert "::view-transition-new(root) { animation: page-in var(--dur-page-in)" in css
+
+    tokens = (ROOT / "app" / "static" / "css" / "tokens.css").read_text()
+    out = int(re.search(r"--dur-page-out: (\d+)ms", tokens).group(1))
+    into = int(re.search(r"--dur-page-in: (\d+)ms", tokens).group(1))
+    assert out < into, "the outgoing page must clear before the incoming one has finished"
+    assert 200 <= into <= 350, into
+    assert into <= 400, "design.md Motion: nothing exceeds 400ms"
+
+
+def test_the_incoming_page_rises_by_a_restrained_amount():
+    css = base_css()
+    lift = re.search(r"@keyframes page-in \{ from \{ opacity: 0; transform: translateY\((\d+)px\)",
+                     css)
+    assert lift and 8 <= int(lift.group(1)) <= 12, css
+
+
+def test_the_header_does_not_travel_with_the_page():
+    """Named elements are lifted out of the root snapshot, so the bar cannot jump or flicker."""
+    css = base_css()
+    assert ".site-header { view-transition-name: site-header; }" in css
+    assert ".nav-indicator { view-transition-name: nav-indicator; }" in css
+    names = re.findall(r"view-transition-name: ([\w-]+);", css)
+    assert len(names) == len(set(names)), f"a view-transition-name must be unique: {names}"
+
+
+def test_reduced_motion_turns_the_transition_off_without_breaking_navigation():
+    block = base_css().split("@media (prefers-reduced-motion: reduce)", 1)[1]
+    assert "::view-transition-group(*)" in block
+    assert "animation: none !important" in block
+    # nothing in the reduced-motion block may stop the navigation itself
+    assert "display: none" not in block and "pointer-events" not in block
+
+
+def direct_children(template, class_name):
+    """Count the immediate element children of the first node carrying `class_name`."""
+    from html.parser import HTMLParser
+
+    class Counter(HTMLParser):
+        depth = None
+        count = 0
+        done = False
+
+        def handle_starttag(self, tag, attrs):
+            if self.done:
+                return
+            classes = dict(attrs).get("class", "").split()
+            if self.depth is None:
+                if class_name in classes:
+                    self.depth = 0
+                return
+            if self.depth == 0:
+                self.count += 1
+            self.depth += 1
+
+        def handle_endtag(self, _tag):
+            if self.done or self.depth is None:
+                return
+            self.depth -= 1
+            if self.depth < 0:                  # the node itself closed; stop counting
+                self.done = True
+
+    c = Counter()
+    c.feed(template.read_text())
+    return c.count
+
+
+def test_the_hero_stagger_stays_within_the_documented_limit():
+    """design.md Motion forbids a cascade of more than three items."""
+    css = (ROOT / "app" / "static" / "css" / "base.css").read_text()
+    delays = re.findall(r"\.hero-copy > \*:nth-child\((\d+)\)", css)
+    assert delays and max(int(d) for d in delays) <= 3, delays
+    assert ".hero-copy > *:nth-child(4)" not in css
+    assert direct_children(ROOT / "app" / "templates" / "index.html", "hero-copy") == 3
+
+
+def test_the_hero_entrance_needs_no_javascript(client):
+    """It is a CSS animation, so a blocked script cannot leave the hero blank."""
+    html = client.get("/").get_data(as_text=True)
+    hero = html.split('class="hero-copy', 1)[1].split("</section>", 1)[0]
+    assert "reveal" not in hero and "data-enter" not in hero
+    css = (ROOT / "app" / "static" / "css" / "base.css").read_text()
+    rule = css.split(".hero-copy > * {", 1)[1].split("}", 1)[0]
+    assert "backwards" in rule, "fill mode must not leave the hero hidden before it animates"
+
+
+@pytest.mark.parametrize("path", ["/", "/workspace"])
+def test_exactly_one_navigation_underline_exists(client, path):
+    """A static border plus a sliding bar at once would draw two underlines."""
+    html = client.get(path).get_data(as_text=True)
+    assert html.count('class="nav-indicator"') == 1
+    assert html.count('aria-current="page"') == 1          # the active page, server rendered
+
+    css = (ROOT / "app" / "static" / "css" / "components.css").read_text()
+    # the static underline is the no-JavaScript fallback and is stood down when the bar exists
+    assert 'a[aria-current="page"] {\n  border-bottom: 2px solid var(--color-accent);' in css
+    assert '.js .nav-links a[aria-current="page"] { border-bottom-color: transparent; }' in css
+
+
+def test_the_navigation_indicator_is_hidden_until_it_is_positioned(client):
+    """Shown before it is measured, it would sit at the left edge and then slide across."""
+    html = client.get("/").get_data(as_text=True)
+    indicator = html.split('class="nav-indicator"', 1)[1].split(">", 1)[0]
+    assert "hidden" in indicator
+    assert 'aria-hidden="true"' in indicator                # decoration, not content
+    js = (ROOT / "app" / "static" / "js" / "ui.js").read_text()
+    assert js.index("rest();") < js.index("bar.hidden = false;")
+
+
+def test_navigation_links_are_still_real_links(client):
+    """The indicator must not have turned the navigation into script-driven tabs."""
+    html = client.get("/").get_data(as_text=True)
+    nav = html.split('<nav aria-label="Primary">', 1)[1].split("</nav>", 1)[0]
+    assert nav.count("<a href=") == 2
+    assert 'href="/"' in nav and 'href="/workspace"' in nav
+    assert "<button" not in nav and "onclick" not in nav
+
+
+def test_buttons_use_the_documented_radius_in_one_place(client):
+    """design.md Shapes: buttons are lg. One shared rule, not a per-button override."""
+    css = (ROOT / "app" / "static" / "css" / "components.css").read_text()
+    assert "border-radius: var(--radius-lg);" in css.split(".btn {", 1)[1].split("}", 1)[0]
+    # no variant re-rounds itself, and nothing in the stylesheet is a pill but the status dot
+    variants = re.findall(r"\.btn-\w+[^{]*\{([^}]*)\}", css)
+    assert not [v for v in variants if "border-radius" in v]
+    assert css.count("var(--radius-full)") == 1
+
+    design = (ROOT / "design.md").read_text()
+    assert "All use `lg` radius" in design
+
+
+def test_every_button_still_has_a_visible_focus_ring():
+    css = (ROOT / "app" / "static" / "css" / "components.css").read_text()
+    assert ".btn:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }" in css
+    assert "outline: none" not in css and "outline: 0" not in css
+
+
+def test_disabled_buttons_do_not_react_to_hover(client):
+    """The three narration controls are disabled, so hovering one must change nothing."""
+    css = (ROOT / "app" / "static" / "css" / "components.css").read_text()
+    assert '.btn:disabled:hover, .btn[aria-disabled="true"]:hover {' in css
+    html = client.get("/workspace").get_data(as_text=True)
+    block = html.split('aria-label="Narration playback"', 1)[1].split("</div>", 1)[0]
+    assert block.count("disabled") == 3

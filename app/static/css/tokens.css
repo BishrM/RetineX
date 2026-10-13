@@ -90,6 +90,8 @@
   --dur-hover: 120ms;
   --dur-disclosure: 200ms;
   --dur-reveal: 320ms;
+  --dur-page-out: 120ms;
+  --dur-page-in: 260ms;
 
   /* the single permitted shadow, tinted with Pine Teal */
   --shadow-overlay: 0 2px 8px rgba(52, 78, 65, 0.10);

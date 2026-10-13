@@ -1,10 +1,17 @@
 {# design.md Navigation: one horizontal bar, canvas background, a single hairline rule, no shadow,
-   no blur, no shrink on scroll. Only surfaces that exist are linked. #}
+   no blur, no shrink on scroll. Only surfaces that exist are linked.
+
+   The logo is the flush-cropped export, not the supplied master: the master carries transparent
+   padding that pushed the visible wordmark right of the content column. See scripts/build_favicon.py.
+
+   There is exactly one underline in the bar. Without JavaScript it is the static border on the
+   current link; with JavaScript the sliding indicator takes over and that border is suppressed,
+   so the two never appear together. #}
 <header class="site-header">
   <div class="shell">
     <a class="brand" href="{{ url_for('main.home') }}">
-      <img src="{{ url_for('static', filename='brand/retinex-logo.png') }}"
-           alt="RetineX: turning vision into voice" width="2039" height="771">
+      <img src="{{ url_for('static', filename='brand/retinex-logo-flush.png') }}"
+           alt="RetineX: turning vision into voice" width="732" height="159">
     </a>
     <nav aria-label="Primary">
       <ul class="nav-links">
@@ -13,6 +20,7 @@
         <li><a href="{{ url_for('main.workspace') }}"
                {% if request.endpoint == 'main.workspace' %}aria-current="page"{% endif %}>Workspace</a></li>
       </ul>
+      <span class="nav-indicator" aria-hidden="true" hidden></span>
     </nav>
   </div>
 </header>

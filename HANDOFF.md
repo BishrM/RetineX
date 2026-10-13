@@ -8,8 +8,8 @@ Neural Voice Narration for Real-Time Visual Accessibility. Academic major projec
 **Implemented and verified in this repo:** Stage 1 — the dataset layer (`src/retinex/dataset.py`), Flickr8K
 (third-party Kaggle copy) validation, and the frozen image-level 6000/1000/1000 split, committed and passing
 `verify`. Stage 2 — VGG16 fc2 feature extraction (`src/retinex/features.py`), **complete: all 8,000 rows of a
-(8000, 4096) float32 matrix**, passing `python -m retinex.features validate`. 241 pytest tests pass
-(20 dataset, 23 features, 67 pseudo-classes, 69 Fisher, 62 app), all on synthetic fixtures.
+(8000, 4096) float32 matrix**, passing `python -m retinex.features validate`. 276 pytest tests pass
+(20 dataset, 23 features, 67 pseudo-classes, 69 Fisher, 97 app), all on synthetic fixtures.
 
 Stage 3 — TF-IDF + K-Means semantic pseudo-classes (`src/retinex/pseudoclasses.py`), **complete: 6,000
 training images labelled into 20 clusters**, passing `python -m retinex.pseudoclasses validate`. Measured
@@ -38,7 +38,7 @@ per-stage table below is authoritative; treat any stage not marked COMPLETED as 
 | BLEU-1..4 evaluation | NOT IMPLEMENTED |
 | Caption inference | NOT IMPLEMENTED (single-image *feature* extraction works in the Workspace) |
 | gTTS narration | NOT IMPLEMENTED (UI shows disabled controls and an explanation) |
-| Flask app (Workspace + Home) | COMPLETED for the implemented stages (62 tests; no caption or narration, by design) |
+| Flask app (Workspace + Home) | COMPLETED for the implemented stages (97 tests; no caption or narration, by design) |
 | Tests for stages after Stage 1 | PARTIAL — `tests/test_features.py` (23), `tests/test_pseudoclasses.py` (67), `tests/test_fisher.py` (69), all synthetic; Stages 5+ NOT IMPLEMENTED |
 
 ## Origin and why a rebuild
@@ -491,15 +491,19 @@ Home at `/`, Workspace at `/workspace`, plus `GET /api/pipeline` and `POST /api/
   call and asserts equality.
 - Reports measured per-request statistics: dimensions, mean, max, L2 norm, zero fraction, the eight
   strongest selected dimensions with their original 4096-d index, and the request's own timings.
-- Derives the nine-stage pipeline display by **running the four real validators on every page load**,
-  so a missing or tampered artifact is reported instead of a green badge. Two tests prove it: empty
-  directories yield four `missing` stages, and a monkeypatched failing validator surfaces as `failed`.
+- Derives the nine-stage pipeline status by **running the four real validators**, so a missing or
+  tampered artifact is reported instead of a green badge. Two tests prove it: empty directories yield
+  four `missing` stages, and a monkeypatched failing validator surfaces as `failed`. **Home and
+  Workspace render without running the validators at all**; `GET /api/pipeline` runs them when the
+  status is explicitly asked for, and `test_pages_render_without_running_the_validators` fails if a
+  page starts calling `pipeline.stages()` again.
 
 **What it deliberately does not do.** There is no code path in `app/` that can return a caption, not
 even a placeholder, because no caption model exists in this repository. The description panel and the
-narration panel are marked NOT IMPLEMENTED with the stage number, the three playback buttons carry a
-real `disabled` attribute plus `aria-describedby` explaining why, and the transcript section is present
-but empty. No BLEU score, accuracy figure or latency claim appears in any template.
+narration panel each carry an **"In development"** chip and a short note saying what is missing and
+that nothing will be invented in its place; neither prints a stage number. The three playback buttons
+carry a real `disabled` attribute plus `aria-describedby` explaining why, and the transcript section
+is present but empty. No BLEU score, accuracy figure or latency claim appears in any template.
 
 **Measured timings** (2026-10-12, Apple M2, 8 GB, CPU only, TensorFlow 2.21.0, no GPU/Metal backend)
 
@@ -509,10 +513,12 @@ but empty. No BLEU score, accuracy figure or latency claim appears in any templa
 | First analyze request after load | **307.6 ms** (275 ms on the live server) |
 | Warm analyze requests | median **109.3 ms**, range 105-115 ms over 9 runs |
 | Peak process RSS | **1.14 GB** after one load plus six inferences |
-| Page weight | Home 11.9 KB, Workspace 12.6 KB of HTML |
+| Page weight | Home 6,685 bytes (~6.5 KB), Workspace 8,684 bytes (~8.5 KB) of HTML |
 
 These are wall-clock measurements on this machine, not a throughput claim. Stage 2's batch rate
-(10.7 images/s at batch 32) is not comparable: single-image requests carry per-call overhead.
+(10.7 images/s at batch 32) is not comparable: single-image requests carry per-call overhead. The
+timings are the original 2026-10-12 run and the UI redesign did not touch the code they measure; only
+the page weight was re-measured, on 2026-10-13, because the redesign removed markup from both pages.
 
 **Environment caveats**
 - The ImageNet weights (~553 MB) are downloaded by Keras into `~/.keras/models/` on first use and are
@@ -525,6 +531,37 @@ These are wall-clock measurements on this machine, not a throughput claim. Stage
   `test_lazy_model_load_happens_once_under_concurrency` runs four threads and asserts a single build.
 - `app.run()` is the Werkzeug development server. No production WSGI server, HTTPS, rate limiting or
   authentication is configured, and none is claimed.
+
+**UI redesign (2026-10-13).** The pages were reworked from a research-report layout into a product
+one. What changed:
+
+- The nine-stage pipeline dashboard was **removed from both pages**, along with the Home "What exists
+  right now" metrics band. It was a repository status report, not interface content. Nothing behind it
+  was removed: `app/pipeline.py`, the four validators and `GET /api/pipeline` are untouched.
+- Home is now hero, premise, three plain-language steps, closing call to action. Academic positioning
+  was removed from every user-facing surface, and a test fails if "academic", "major project",
+  "student", "examiner" or "coursework" reappears on either page. This document and `CLAUDE.md` still
+  describe the project accurately as an academic major project; they are not UI.
+- The navigation carries **one shared underline** that glides to the hovered or focused link and
+  returns to the current page. It is a progressive enhancement in `app/static/js/ui.js`; without
+  JavaScript the current link keeps a plain static border and no second marker is ever drawn.
+- **Page transitions** use the browser's cross-document View Transitions API through a single
+  `@view-transition { navigation: auto; }` rule: 120ms out, 260ms in with a 10px rise. No script
+  intercepts a link, so new tabs, modifier clicks, downloads, fragments, Back, Forward and scroll
+  restoration keep their native behaviour, and a browser without the API simply navigates. The header
+  and the underline carry their own `view-transition-name` so the bar does not travel with the page.
+- The hero entrance is a plain CSS animation (three items, 70ms apart) rather than a scripted reveal,
+  so a blocked script cannot leave content hidden. Below-the-fold reveals use an IntersectionObserver,
+  fire once, and are gated on a `js` class that is only added when the script runs.
+- Buttons moved from `md` to `lg` radius, with `:focus-visible`, `:active` and disabled-hover states.
+  The change is in the one shared `.btn` rule; `design.md` records the decision and its reason.
+
+**NOT VERIFIED: the motion has never been watched running.** Chrome 155 was used to confirm that
+`@view-transition` parses with `navigation=auto`, that every `::view-transition` selector is accepted,
+and that the reduced-motion override keeps `animation-name: none !important`, and the pages were
+screenshotted statically at 1440, 900 and 500px. Capturing frames mid-navigation needs a browser
+driver that was deliberately not added. Treat the animation as checked through code, static rendering
+and browser CSS support, not through observation.
 
 **Upload handling.** The filename and the browser-supplied MIME type are never trusted. Validation
 order: a file was sent; body size (Werkzeug `MAX_CONTENT_LENGTH` = 8 MB, re-checked on the received
@@ -549,22 +586,46 @@ main/footer landmarks, `aria-live` status region for state changes, the drop zon
 `<label for>` so keyboard and click work without JavaScript, 44 px targets, visible 2 px Fern focus
 ring, and `prefers-reduced-motion` handled in both stylesheets including the progress bar.
 
-**Fonts and favicon.** Avegas Royale is still absent and unlicensed, so display type renders in the
-documented fallback (`"Iowan Old Style", Georgia, serif`) — expected, per design.md, not a bug.
-Atkinson Hyperlegible Next is not vendored either; body text uses its documented fallback stack. **No
-favicon is shipped**: the supplied `favicon.png` is 1774x887 and design.md forbids altering supplied
-assets, so a square export is still an outstanding asset. A test asserts no `rel="icon"` is emitted.
+**Fonts.** Avegas Royale is still absent and unlicensed, so display type renders in the documented
+fallback (`"Iowan Old Style", Georgia, serif`) — expected, per design.md, not a bug. Atkinson
+Hyperlegible Next is not vendored either; body text uses its documented fallback stack.
+
+**Favicon.** A favicon now ships, in two variants, because a favicon sits in browser chrome rather
+than on the page and no single value is visible on both light and dark chrome. Measured: cream on
+Chrome's light tab bar `#DEE1E6` is 1.04:1, which is invisible, while Pine Green on the same surface
+is 7.34:1; on a dark tab bar `#35363A` cream reaches 9.58:1 and Pine Green drops to 1.25:1.
+
+- `app/static/brand/favicon.png`, 512x512, refilled with Pine Green `#324A3D`, linked with no media
+  query so it is also the fallback for a browser that ignores `media` on a link element.
+- `app/static/brand/favicon-dark.png`, 512x512, the cream artwork exactly as supplied, linked with
+  `media="(prefers-color-scheme: dark)"`.
+- The Apple touch icon is the green variant, because touch icons are composited on light
+  home-screen backgrounds.
+
+This is browser chrome only and does **not** give the site a dark theme; design.md's no-dark-mode
+decision stands and a test still forbids any `@media (prefers-color-scheme)` at-rule in the
+stylesheets. Both variants are generated by `scripts/build_favicon.py` from the supplied master
+`app/static/brand/favicon-source.png` (1414x706 cream), which is never written to; `--check` fails if
+a committed export is stale. The green variant changes the fill colour only, so every alpha value and
+therefore the shape and its antialiasing come unchanged from the master, which a test asserts by
+comparing the two alpha channels. The same script also writes `retinex-logo-flush.png`, the
+navigation logo cropped to its own alpha bounds, because the supplied logo carries 34px of
+transparent padding on its left edge that pushed the wordmark out of line with the content column.
 
 **Running the UI tests**
 ```bash
-pytest tests/test_app.py        # 62 tests, no network, no VGG16 weights needed
-pytest                          # the whole suite, 241 tests
+pytest tests/test_app.py        # 97 tests, no network, no VGG16 weights needed
+pytest                          # the whole suite, 276 tests
 python scripts/build_tokens.py --check
+python scripts/build_favicon.py --check
 ```
 
 **Files** `app/__init__.py` (factory), `app/routes.py` (two pages, two API endpoints, error handlers),
 `app/pipeline.py` (real stage status), `app/inference.py` (lazy model, Stage 2 code path, read-only
 selection), `app/uploads.py` (byte-level validation), `app/templates/` (base, nav, footer, macros,
 workspace, index, error), `app/static/css/` (generated tokens plus base, layout, components),
-`app/static/js/workspace.js`, `scripts/build_tokens.py`, `tests/test_app.py`. The logo moved to
-`app/static/brand/retinex-logo.png` by `git mv`, bytes unchanged.
+`app/static/js/workspace.js`, `app/static/js/ui.js` (section reveals and the sliding navigation
+underline), `scripts/build_tokens.py`, `scripts/build_favicon.py`, `tests/test_app.py`. The logo was
+moved to `app/static/brand/retinex-logo.png` by `git mv`; its bytes were later replaced by the
+project owner with the green, transparent re-supply, and the navigation renders the flush-cropped
+export derived from it.
