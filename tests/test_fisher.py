@@ -6,6 +6,7 @@ entry points expose no overrides.
 """
 import inspect
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -648,3 +649,87 @@ def test_validate_detects_nan_scores(tmp_path):
     meta["artifact_sha256"][fi.SCORES] = fe._sha256(out / fi.SCORES)
     (out / fi.META).write_text(json.dumps(meta))
     assert any("NaN score" in e for e in check(out, data, fdir, pdir))
+
+
+# --- the committed selection artifact ----------------------------------------
+# One Stage 4 artifact, fisher_top512_indices.npy, is committed as a documented exception so the
+# deployed Workspace can reduce a feature vector. These tests guard that exception: the pinned
+# digest must describe the file that is actually in the repository, and nothing else may be trusted.
+
+COMMITTED_INDICES = Path(__file__).resolve().parents[1] / "artifacts" / "fisher" / fi.INDICES
+
+
+def test_the_selection_artifact_is_committed():
+    """If this fails the deployed app cannot reduce a vector, whatever else passes."""
+    assert COMMITTED_INDICES.is_file(), f"{fi.INDICES} must be in the repository"
+
+
+def test_pinned_digest_matches_the_committed_file():
+    """The constant in fisher.py must describe the bytes that are actually committed.
+
+    A mismatch is not a test to fix: it means the artifact changed. Re-run the Stage 4 selection
+    deliberately, confirm the result, then update the constant and HANDOFF.md together.
+    """
+    assert fe._sha256(COMMITTED_INDICES) == fi.EXPECTED_INDICES_SHA256
+
+
+def test_pinned_digest_matches_the_recorded_metadata():
+    """Provenance: the digest Stage 4 recorded when it produced the file.
+
+    fisher_meta.json is not committed, so this can only run where the full artifact set exists.
+    """
+    meta_path = COMMITTED_INDICES.parent / fi.META
+    if not meta_path.is_file():
+        pytest.skip("fisher_meta.json is not committed; run this where Stage 4 output exists")
+    recorded = json.loads(meta_path.read_text())["artifact_sha256"][fi.INDICES]
+    assert recorded == fi.EXPECTED_INDICES_SHA256
+
+
+def test_the_committed_selection_has_the_expected_structure():
+    idx = np.load(COMMITTED_INDICES)
+    assert idx.dtype == np.int32
+    assert idx.shape == (fi.N_SELECTED,)
+    assert (np.diff(idx) > 0).all(), "indices must be strictly ascending"
+    assert idx.min() >= 0 and idx.max() < fe.FEATURE_DIM
+
+
+def test_verify_indices_accepts_the_committed_file():
+    assert fi.verify_indices(COMMITTED_INDICES) == fi.EXPECTED_INDICES_SHA256
+
+
+def test_verify_indices_rejects_a_tampered_file(tmp_path):
+    """One flipped byte is enough. The file is never parsed to detect it."""
+    tampered = tmp_path / fi.INDICES
+    raw = bytearray(COMMITTED_INDICES.read_bytes())
+    raw[-1] ^= 0x01
+    tampered.write_bytes(bytes(raw))
+    with pytest.raises(ValueError, match="does not match its expected SHA-256"):
+        fi.verify_indices(tampered)
+
+
+def test_verify_indices_rejects_a_truncated_file(tmp_path):
+    truncated = tmp_path / fi.INDICES
+    truncated.write_bytes(COMMITTED_INDICES.read_bytes()[:100])
+    with pytest.raises(ValueError, match="does not match its expected SHA-256"):
+        fi.verify_indices(truncated)
+
+
+def test_only_the_index_file_escapes_the_artifacts_ignore_rule():
+    """The exception is narrow.
+
+    Lists everything under artifacts/ that git would carry: tracked files plus untracked files the
+    ignore rules do not exclude. Only the placeholder and the one index file may appear. If a large
+    matrix or fisher_meta.json shows up here, the .gitignore exception is too wide.
+    """
+    import subprocess
+
+    root = Path(__file__).resolve().parents[1]
+    out = subprocess.run(
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "artifacts/"],
+        cwd=root, capture_output=True, text=True)
+    if out.returncode != 0:
+        pytest.skip("not a git work tree")
+    assert sorted(out.stdout.split()) == [
+        "artifacts/.gitkeep",
+        f"artifacts/fisher/{fi.INDICES}",
+    ], out.stdout.split()

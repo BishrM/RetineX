@@ -8,8 +8,9 @@ Neural Voice Narration for Real-Time Visual Accessibility. Academic major projec
 **Implemented and verified in this repo:** Stage 1 — the dataset layer (`src/retinex/dataset.py`), Flickr8K
 (third-party Kaggle copy) validation, and the frozen image-level 6000/1000/1000 split, committed and passing
 `verify`. Stage 2 — VGG16 fc2 feature extraction (`src/retinex/features.py`), **complete: all 8,000 rows of a
-(8000, 4096) float32 matrix**, passing `python -m retinex.features validate`. 276 pytest tests pass
-(20 dataset, 23 features, 67 pseudo-classes, 69 Fisher, 97 app), all on synthetic fixtures.
+(8000, 4096) float32 matrix**, passing `python -m retinex.features validate`. 291 pytest tests pass
+(20 dataset, 23 features, 67 pseudo-classes, 77 Fisher, 104 app). All are synthetic except the few
+that check the one committed Fisher index file against its pinned digest.
 
 Stage 3 — TF-IDF + K-Means semantic pseudo-classes (`src/retinex/pseudoclasses.py`), **complete: 6,000
 training images labelled into 20 clusters**, passing `python -m retinex.pseudoclasses validate`. Measured
@@ -38,8 +39,8 @@ per-stage table below is authoritative; treat any stage not marked COMPLETED as 
 | BLEU-1..4 evaluation | NOT IMPLEMENTED |
 | Caption inference | NOT IMPLEMENTED (single-image *feature* extraction works in the Workspace) |
 | gTTS narration | NOT IMPLEMENTED (UI shows disabled controls and an explanation) |
-| Flask app (Workspace + Home) | COMPLETED for the implemented stages (97 tests; no caption or narration, by design) |
-| Tests for stages after Stage 1 | PARTIAL — `tests/test_features.py` (23), `tests/test_pseudoclasses.py` (67), `tests/test_fisher.py` (69), all synthetic; Stages 5+ NOT IMPLEMENTED |
+| Flask app (Workspace + Home) | COMPLETED for the implemented stages (104 tests; no caption or narration, by design) |
+| Tests for stages after Stage 1 | PARTIAL — `tests/test_features.py` (23), `tests/test_pseudoclasses.py` (67), `tests/test_fisher.py` (77); Stages 5+ NOT IMPLEMENTED |
 
 ## Origin and why a rebuild
 Evolved from https://github.com/MiteshPuthran/Image-Caption-Generator (itself an implementation of
@@ -421,7 +422,8 @@ original index; the chosen indices are then sorted ascending, and that array is 
 (output column `i` is source column `idx[i]`). The cut score, whether the cut falls inside a tie, and the
 included/excluded tied counts are all recorded.
 
-**Planned artifacts** (`artifacts/fisher/`, git-ignored by the existing `artifacts/*` rule)
+**Planned artifacts** (`artifacts/fisher/`, git-ignored by the existing `artifacts/*` rule, with one
+documented exception described below)
 
 | File | Contents |
 | --- | --- |
@@ -462,6 +464,46 @@ that agreement is reported, not asserted anywhere in code.
   within-class spread but identical class means also scores 0.0 while having a positive denominator.
 - **No performance claim.** Whether 512 Fisher features beat the 4096-d baseline is answerable only by the
   two LSTM BLEU evaluations in Stages 6-7. A negative result will be reported as such.
+
+**One Stage 4 artifact is committed, as a documented exception (2026-10-13).**
+`artifacts/fisher/fisher_top512_indices.npy` is in the repository. Everything else under
+`artifacts/` stays out.
+
+*Why.* The Workspace reduces an uploaded image's 4096-d vector to 512 by applying this file. Without
+it `/api/analyze` can only return a 503, so a deployment from a clean checkout would ship a Workspace
+that cannot do the one thing it does. The file is **2,176 bytes**, int32, shape (512,), strictly
+ascending, min 2, max 4095. It is derived, not source: `python -m retinex.fisher select` reproduces it
+from the frozen inputs. It carries no image, no caption, no feature value and no dataset content, only
+512 column numbers.
+
+*What stays out, and why the exception is narrow.* `fisher_scores.npy`, `vgg16_fc2_fisher512.npy`
+(16.4 MB), `fisher_meta.json`, `vgg16_fc2.npy` (125 MB), the pseudo-class outputs, model weights and
+the dataset are all still ignored. The `.gitignore` block re-includes exactly one path, and
+`test_only_the_index_file_escapes_the_artifacts_ignore_rule` lists everything under `artifacts/` that
+git would carry and fails if anything but that file and `artifacts/.gitkeep` appears.
+
+Two mechanical traps, both found by testing rather than reasoning, are worth knowing before editing
+that block: `artifacts/*` excludes the *directory*, so the directory has to be re-included before a
+file inside it can be, and the exception must sit **after** the `*.npy` rule, because the last
+matching pattern wins and a negation placed above it is silently ineffective.
+
+*Integrity.* `fisher_meta.json` records this file's SHA-256 but is not committed, so the expected
+digest is pinned as `EXPECTED_INDICES_SHA256` in `src/retinex/fisher.py`:
+`5de508262443f0cf35dec1a5ee1326bce05f84413db296a85d72bb21ae21e749`. `fisher.verify_indices` hashes
+the raw bytes and raises before anything parses them, so a tampered or truncated file never reaches
+`np.load`. `app.inference.load_selection` runs that check on the production path and caches the
+verified array for the life of the process behind a lock, the same double-checked pattern the model
+uses, so nothing is re-hashed per request. A mismatch produces the existing controlled **503** with a
+fixed message; the two digests go to the log, never to the client. A caller-supplied directory is the
+test seam and gets the structural checks only, because the pinned digest describes the committed file
+and a synthetic fixture is not it.
+
+*If that digest ever mismatches,* do not edit the constant to make the test pass. It means the
+committed artifact changed, which is a methodology event: re-run the Stage 4 selection deliberately,
+confirm the result, then update the constant and this section together.
+`test_pinned_digest_matches_the_committed_file` and `test_pinned_digest_matches_the_recorded_metadata`
+hold the constant, the file and the Stage 4 metadata in agreement wherever the full artifact set
+exists; the metadata test skips where it does not.
 
 **Code** `src/retinex/fisher.py` (`training_join`, `fisher_scores`, `select_top`, `apply_selection`,
 `select`/`_select`, `validate_fisher`/`_validate_fisher`, CLI `select|validate`) and
@@ -614,8 +656,8 @@ transparent padding on its left edge that pushed the wordmark out of line with t
 
 **Running the UI tests**
 ```bash
-pytest tests/test_app.py        # 97 tests, no network, no VGG16 weights needed
-pytest                          # the whole suite, 276 tests
+pytest tests/test_app.py        # 104 tests, no network, no VGG16 weights needed
+pytest                          # the whole suite, 291 tests
 python scripts/build_tokens.py --check
 python scripts/build_favicon.py --check
 ```

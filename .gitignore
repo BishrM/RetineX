@@ -25,6 +25,18 @@ artifacts/*
 *.npy
 *.npz
 *.pkl
+# Documented exception: the 512 Fisher-selected column indices, 2,176 bytes. The deployed
+# Workspace cannot reduce a feature vector without it, and unlike the matrices it is tiny and
+# reproducible by `python -m retinex.fisher select`. Its SHA-256 is pinned in
+# src/retinex/fisher.py and verified before the file is ever parsed.
+# This block must stay AFTER *.npy: the last matching pattern wins, so a negation placed above
+# that rule is silently ineffective. Re-including the directory first is also required, because
+# artifacts/* excludes it and git will not descend into an excluded directory.
+# Nothing else is re-included: fisher_scores.npy, vgg16_fc2_fisher512.npy, fisher_meta.json and
+# vgg16_fc2.npy all stay out.
+!artifacts/fisher/
+artifacts/fisher/*
+!artifacts/fisher/fisher_top512_indices.npy
 # generated audio
 *.mp3
 *.wav

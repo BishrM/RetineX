@@ -66,9 +66,44 @@ INDICES = "fisher_top512_indices.npy"
 MATRIX = "vgg16_fc2_fisher512.npy"
 META = "fisher_meta.json"
 
+# SHA-256 of the committed artifacts/fisher/fisher_top512_indices.npy.
+#
+# That one file is a documented exception to the artifacts/* ignore rule, because the deployed
+# Workspace cannot reduce a feature vector without it. It is 2,176 bytes and reproducible by
+# `python -m retinex.fisher select`. The other Stage 4 artifacts, including fisher_meta.json which
+# normally carries this digest, stay out of the repository, so the expected value has to be pinned
+# here rather than read from the metadata at run time.
+#
+# Do not edit this to silence a failing test. A mismatch means the committed artifact changed,
+# which is a methodology event: re-run the Stage 4 selection deliberately, confirm the new result,
+# then update this constant and HANDOFF.md together.
+# Two tests guard it, and they are not interchangeable:
+#   test_pinned_digest_matches_the_committed_file     runs anywhere the repository is checked out,
+#     including CI, and is the drift guard: it fails if this constant stops describing the
+#     committed bytes.
+#   test_pinned_digest_matches_the_recorded_metadata  needs fisher_meta.json, which is not
+#     committed, so it skips explicitly in a clean checkout. It is the provenance link back to the
+#     digest Stage 4 recorded when it produced the file.
+EXPECTED_INDICES_SHA256 = "5de508262443f0cf35dec1a5ee1326bce05f84413db296a85d72bb21ae21e749"
+
 
 def default_out_dir() -> Path:
     return Path(__file__).resolve().parents[2] / "artifacts" / "fisher"
+
+
+def verify_indices(path):
+    """Check the selection file against its pinned digest and return the digest.
+
+    Hashes the raw bytes, so it can be called before anything parses the file: a tampered or
+    truncated artifact is rejected without np.load ever seeing it. Raises ValueError naming both
+    digests; the caller decides what, if anything, reaches a client.
+    """
+    digest = _sha256(path)
+    if digest != EXPECTED_INDICES_SHA256:
+        raise ValueError(
+            f"{Path(path).name} does not match its expected SHA-256 "
+            f"(expected {EXPECTED_INDICES_SHA256}, read {digest})")
+    return digest
 
 
 def _say(msg):

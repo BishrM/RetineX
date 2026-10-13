@@ -9,7 +9,8 @@ What this cannot do: generate a caption. No LSTM exists in this repository, so t
 here that returns a caption, not even a placeholder one. The Workspace renders that absence.
 
 Nothing here writes to `artifacts/`. The Fisher indices are read with `mmap_mode="r"`, and the
-Stage 2 matrix is never opened at all.
+Stage 2 matrix is never opened at all. The committed selection is checked against the digest pinned
+in `retinex.fisher` before anything parses it, once per process rather than once per request.
 """
 import logging
 import threading
@@ -29,6 +30,11 @@ log = logging.getLogger(__name__)
 _MODEL = None
 _MODEL_LOAD_SECONDS = None
 _MODEL_LOCK = threading.Lock()
+
+# The verified selection, cached the same way and for the same reason: hashing and re-reading a
+# file on every request buys nothing once it has been checked, and the array is 512 int32 values.
+_SELECTION = None
+_SELECTION_LOCK = threading.Lock()
 
 
 class InferenceError(RuntimeError):
@@ -71,14 +77,51 @@ def get_model():
 
 
 def load_selection(fisher_dir=None):
-    """The saved Stage 4 top-512 indices. Read-only: Fisher Score is never refitted here."""
-    fisher_dir = Path(fisher_dir) if fisher_dir else fisher.default_out_dir()
+    """The saved Stage 4 top-512 indices. Read-only: Fisher Score is never refitted here.
+
+    With no argument this is the production path: the committed artifact is checked against
+    `fisher.EXPECTED_INDICES_SHA256` and the verified array is cached for the life of the process,
+    thread-safely, exactly as the model is. A caller-supplied directory is the test seam and gets
+    the structural checks only, because the pinned digest describes the committed file and a
+    synthetic fixture is not it.
+    """
+    if fisher_dir is not None:
+        return _load_selection(Path(fisher_dir), verify=False)
+
+    global _SELECTION
+    if _SELECTION is not None:
+        return _SELECTION
+    with _SELECTION_LOCK:
+        if _SELECTION is None:                   # another thread may have loaded it while we waited
+            _SELECTION = _load_selection(fisher.default_out_dir(), verify=True)
+    return _SELECTION
+
+
+def _load_selection(fisher_dir, verify):
     path = fisher_dir / fisher.INDICES
     if not path.is_file():
         raise InferenceError(
             f"The Fisher Score selection is missing ({path.name}). Run "
             "python -m retinex.fisher select to produce it."
         )
+    if verify:
+        # the raw bytes are hashed first, so a tampered file never reaches np.load
+        try:
+            fisher.verify_indices(path)
+        except OSError as e:
+            log.exception("Fisher selection could not be read from %s", path)
+            raise InferenceError(
+                f"The Fisher Score selection ({path.name}) could not be read. It may be corrupted; "
+                "re-run python -m retinex.fisher select."
+            ) from e
+        except ValueError as e:
+            # the message carries both digests, which belong in the log and not in a response
+            log.error("Fisher selection integrity check failed for %s: %s", path, e)
+            raise InferenceError(
+                f"The Fisher Score selection ({path.name}) does not match its expected checksum. "
+                "It may be corrupted or modified; restore it from the repository or re-run "
+                "python -m retinex.fisher select."
+            ) from None
     try:
         idx = np.load(path, mmap_mode="r")
     except Exception as e:                       # a truncated or non-npy file raises ValueError
@@ -89,9 +132,13 @@ def load_selection(fisher_dir=None):
         ) from e
     if idx.ndim != 1:
         raise InferenceError(f"{path.name} is not a 1-D index array")
-    idx = np.asarray(idx)
+    # A copy, not np.asarray: asarray on a memmap returns a *view* of the mapped file, so the
+    # cached array would keep tracking the bytes on disk and a post-verification overwrite would
+    # change what the app serves without any second check. 512 int32 values are 2 KB in memory.
+    idx = np.array(idx, copy=True)
     if not (np.diff(idx) > 0).all():
         raise InferenceError(f"{path.name} is not strictly ascending; refusing to use it")
+    idx.setflags(write=False)                    # the cached array is shared; nobody mutates it
     return idx
 
 

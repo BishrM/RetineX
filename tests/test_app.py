@@ -5,7 +5,9 @@ the suite stays fast and does not depend on the ImageNet weights being cached.
 """
 import io
 import json
+import os
 import re
+import time
 from pathlib import Path
 
 import numpy as np
@@ -426,6 +428,163 @@ def test_extract_one_applies_the_saved_indices_without_refitting(tmp_path):
 def test_saved_selection_is_read_only_and_ascending():
     idx = inference.load_selection()
     assert idx.shape == (512,) and (np.diff(idx) > 0).all()
+
+
+def test_the_production_selection_is_verified_against_its_pinned_digest(monkeypatch):
+    """The real path checks the committed bytes before numpy ever parses them."""
+    from retinex import fisher as fi
+
+    seen = []
+    real = fi.verify_indices
+    monkeypatch.setattr(fi, "verify_indices", lambda p: seen.append(Path(p).name) or real(p))
+    monkeypatch.setattr(inference, "_SELECTION", None)
+
+    idx = inference.load_selection()
+    assert seen == [fi.INDICES], "the production load must verify exactly once"
+    assert idx.shape == (512,)
+
+
+def test_a_tampered_selection_is_refused_without_leaking_the_digests(tmp_path, monkeypatch):
+    """One flipped byte. The client message must not carry the checksums or a local path."""
+    from retinex import fisher as fi
+
+    raw = bytearray((fi.default_out_dir() / fi.INDICES).read_bytes())
+    raw[-1] ^= 0x01
+    (tmp_path / fi.INDICES).write_bytes(bytes(raw))
+
+    monkeypatch.setattr(fi, "default_out_dir", lambda: tmp_path)
+    monkeypatch.setattr(inference, "_SELECTION", None)
+
+    with pytest.raises(inference.InferenceError) as excinfo:
+        inference.load_selection()
+    message = str(excinfo.value)
+    assert "does not match its expected checksum" in message
+    assert fi.EXPECTED_INDICES_SHA256 not in message
+    assert str(tmp_path) not in message
+
+
+def test_a_tampered_selection_through_the_api_is_a_503(client, tmp_path, monkeypatch):
+    from retinex import fisher as fi
+
+    raw = bytearray((fi.default_out_dir() / fi.INDICES).read_bytes())
+    raw[0] ^= 0xFF
+    (tmp_path / fi.INDICES).write_bytes(bytes(raw))
+    monkeypatch.setattr(fi, "default_out_dir", lambda: tmp_path)
+    monkeypatch.setattr(inference, "_SELECTION", None)
+
+    r = client.post("/api/analyze", data={"image": (io.BytesIO(png_bytes()), "a.png")},
+                    content_type="multipart/form-data")
+    assert r.status_code == 503
+    body = r.get_json()
+    assert body["ok"] is False and "checksum" in body["error"]
+    assert "features" not in body                       # never a fabricated success
+    assert fi.EXPECTED_INDICES_SHA256 not in r.get_data(as_text=True)
+
+
+def test_the_digest_is_not_recomputed_on_every_request(monkeypatch):
+    """Verification is per process, like the model, not per call."""
+    from retinex import fisher as fi
+
+    calls = []
+    real = fi.verify_indices
+    monkeypatch.setattr(fi, "verify_indices", lambda p: calls.append(p) or real(p))
+    monkeypatch.setattr(inference, "_SELECTION", None)
+
+    first = inference.load_selection()
+    for _ in range(5):
+        inference.load_selection()
+    assert len(calls) == 1, f"hashed {len(calls)} times; it must be cached"
+    assert inference.load_selection() is first      # the same cached array, not a re-read
+
+
+def test_the_cached_selection_cannot_be_mutated(monkeypatch):
+    """It is shared across requests and threads, so it must be read-only."""
+    monkeypatch.setattr(inference, "_SELECTION", None)
+    idx = inference.load_selection()
+    assert not idx.flags.writeable
+    with pytest.raises(ValueError):
+        idx[0] = 999
+
+
+def test_the_selection_is_verified_once_under_concurrency(monkeypatch):
+    """Four threads arriving together must not all hash and load the file."""
+    import threading
+
+    from retinex import fisher as fi
+
+    calls = []
+    real = fi.verify_indices
+
+    def slow(path):
+        calls.append(path)
+        time.sleep(0.05)                            # long enough for the others to queue
+        return real(path)
+
+    monkeypatch.setattr(fi, "verify_indices", slow)
+    monkeypatch.setattr(inference, "_SELECTION", None)
+
+    out = []
+    threads = [threading.Thread(target=lambda: out.append(inference.load_selection()))
+               for _ in range(4)]
+    for t in threads:
+        t.start()
+        time.sleep(0.005)
+    for t in threads:
+        t.join()
+
+    assert len(calls) == 1, f"verified {len(calls)} times"
+    assert all(o is out[0] for o in out), "every thread must get the one cached array"
+
+
+def test_the_cached_selection_is_detached_from_the_file_on_disk(tmp_path, monkeypatch):
+    """Verify-then-cache must survive the file changing underneath it.
+
+    np.asarray on a memory-mapped array returns a *view*, so a cache built that way keeps reading
+    the bytes on disk: overwrite the artifact after the first request and every later request would
+    quietly use unverified indices, with no second hash and no error. The copy is what closes that
+    window, and this test is what proves the copy is really a copy.
+
+    The real tracked artifact is never touched. A byte-identical duplicate is placed in tmp_path,
+    which is what gets overwritten, so a failed assertion here cannot damage the repository.
+    """
+    from retinex import fisher as fi
+
+    source = fi.default_out_dir() / fi.INDICES
+    before_digest = fe._sha256(source)
+    fixture = tmp_path / fi.INDICES
+    fixture.write_bytes(source.read_bytes())            # same bytes, so verification passes
+    monkeypatch.setattr(fi, "default_out_dir", lambda: tmp_path)
+    monkeypatch.setattr(inference, "_SELECTION", None)
+
+    idx = inference.load_selection()
+    original = idx.copy()
+
+    # it owns its data and shares nothing with any mapping of the file
+    assert idx.flags.owndata, "the cached array must not be a view of the mapped file"
+    assert not np.shares_memory(idx, np.load(fixture, mmap_mode="r"))
+
+    # overwrite in place, exactly as a post-verification tamper would. 7 cannot be the last
+    # index of an ascending selection whose maximum is 4095, so this is always a real change.
+    raw = bytearray(fixture.read_bytes())
+    raw[-4:] = (7).to_bytes(4, "little")
+    with open(fixture, "r+b") as f:
+        f.write(bytes(raw))
+        f.flush()
+        os.fsync(f.fileno())
+    assert fe._sha256(fixture) != fi.EXPECTED_INDICES_SHA256, "the fixture really was changed"
+
+    # the cached array still holds the values that were verified
+    cached = inference.load_selection()
+    assert cached is idx
+    assert np.array_equal(cached, original)
+    assert fe._sha256(source) == before_digest, "the tracked artifact must be untouched"
+
+
+def test_a_caller_supplied_directory_is_not_checked_against_the_pinned_digest(tmp_path):
+    """The test seam stays usable: the pinned digest describes the committed file, not a fixture."""
+    np.save(tmp_path / "fisher_top512_indices.npy", np.arange(4, dtype=np.int32))
+    idx = inference.load_selection(tmp_path)
+    assert list(idx) == [0, 1, 2, 3]
 
 
 def test_fisher_artifacts_are_never_written_by_the_app(tmp_path):
